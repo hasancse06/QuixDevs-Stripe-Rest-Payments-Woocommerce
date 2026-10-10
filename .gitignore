@@ -1,0 +1,73 @@
+# Development dependencies; commit manifests and lockfiles.
+/vendor/
+/node_modules/
+
+# Generated test, lint, analysis and coverage output.
+/.phpunit.result.cache
+/.phpunit.cache/
+/.phpunit/
+/.phpcs-cache
+/.phpcs-cache/
+/.phpstan-cache/
+/coverage/
+/.coverage
+/.pytest_cache/
+__pycache__/
+*.py[cod]
+/plugin-check.json
+/docs/verification/
+
+# Local settings and credentials; retain distributed examples.
+.env
+.env.*
+!.env.example
+wp-config.php
+wp-tests-config.php
+/phpunit.xml
+/phpcs.xml
+/.phpcs.xml
+/phpstan.neon
+/auth.json
+/tests/local-config.php
+*.pem
+*.key
+*.p12
+*.pfx
+
+# Packages, databases and temporary output.
+*.zip
+*.tar
+*.tar.gz
+*.tgz
+*.7z
+*.rar
+*.sql
+*.sql.gz
+*.sqlite
+*.sqlite3
+*.db
+*.log
+/dist/
+/build/
+/.release/
+/artifacts/
+/tmp/
+/temp/
+/docs/screenshots/capture-original-*.png
+
+# Operating system and editor files.
+/.idea/
+/.vscode/
+.DS_Store
+._*
+Thumbs.db
+Desktop.ini
+*.swp
+*.swo
+*~
+*.orig
+*.rej
+
+# Intentionally tracked: runtime, tests, .github, composer.lock,
+# *.dist configuration, documentation, numbered screenshots,
+# supplied logo, editable SVGs and presentation PNG exports.

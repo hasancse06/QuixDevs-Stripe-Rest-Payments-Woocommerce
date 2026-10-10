@@ -1,0 +1,64 @@
+name: CI
+on: [push, pull_request, workflow_dispatch]
+permissions:
+  contents: read
+jobs:
+  quality:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        php: ['8.2', '8.3', '8.4']
+    steps:
+      - uses: actions/checkout@v4
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: ${{ matrix.php }}
+          tools: composer:v2
+          coverage: none
+      - run: composer install --no-interaction --prefer-dist
+      - run: find includes -name '*.php' -print0 | xargs -0 -n1 php -l
+      - run: composer lint
+      - run: composer analyse
+      - run: composer test
+      - run: composer package
+      - run: python3 tools/check-source.py
+      - run: python3 tools/check-repository.py
+  integration:
+    runs-on: ubuntu-latest
+    services:
+      mysql:
+        image: mysql:8.0
+        env:
+          MYSQL_ROOT_PASSWORD: disposable
+          MYSQL_DATABASE: quixdevs_test
+        ports: ['3306:3306']
+        options: >-
+          --health-cmd="mysqladmin ping -pdisposable"
+          --health-interval=10s --health-timeout=5s --health-retries=10
+    env:
+      QUIXDEVS_WP_ROOT: /tmp/quixdevs-wordpress
+      QUIXDEVS_DB_HOST: quixdevs-db:3306
+      QUIXDEVS_DB_USER: root
+      QUIXDEVS_DB_PASSWORD: disposable
+      QUIXDEVS_DISPOSABLE_TESTS: '1'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.4'
+          tools: composer:v2, wp-cli
+          extensions: mysqli
+          coverage: none
+      - run: echo '127.0.0.1 quixdevs-db' | sudo tee -a /etc/hosts
+      - run: composer install --no-interaction --prefer-dist
+      - run: bash tools/provision-test-site.sh
+      - run: composer test:integration
+      - run: composer package
+      - run: wp plugin activate plugin-check --path="$QUIXDEVS_WP_ROOT"
+      - run: unzip -q build/quixdevs-stripe-rest-payments.zip -d /tmp/quixdevs-package
+      - run: wp plugin check /tmp/quixdevs-package/quixdevs-stripe-rest-payments --path="$QUIXDEVS_WP_ROOT" --format=json > plugin-check.json
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: plugin-check-results
+          path: plugin-check.json

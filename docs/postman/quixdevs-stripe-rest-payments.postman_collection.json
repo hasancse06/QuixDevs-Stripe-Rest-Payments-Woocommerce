@@ -1,0 +1,132 @@
+{
+  "info": {
+    "name": "QuixDevs Stripe REST Payments",
+    "description": "Development build: authenticated native order-pay handoff and status. authentication is the complete backend-only Authorization header value; use a scoped test account. Never export real credentials.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {
+      "key": "base_url",
+      "value": "https://store.example"
+    },
+    {
+      "key": "order_id",
+      "value": "123"
+    },
+    {
+      "key": "authentication",
+      "value": ""
+    },
+    {
+      "key": "idempotency_key",
+      "value": "demo-preparation-0001"
+    }
+  ],
+  "item": [
+    {
+      "name": "Prepare authorized order",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "{{authentication}}"
+          },
+          {
+            "key": "Accept",
+            "value": "application/json"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          },
+          {
+            "key": "Idempotency-Key",
+            "value": "{{idempotency_key}}"
+          }
+        ],
+        "url": {
+          "raw": "{{base_url}}/wp-json/quixdevs-stripe-rest-payments/v1/orders/{{order_id}}/prepare",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "wp-json",
+            "quixdevs-stripe-rest-payments",
+            "v1",
+            "orders",
+            "{{order_id}}",
+            "prepare"
+          ]
+        },
+        "description": "Requires HTTPS and owner identity or both integration grants. No guest access. Keep authorization and payment URLs confidential.",
+        "body": {
+          "mode": "raw",
+          "raw": "{}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      },
+      "response": [],
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test(\"Expected success or documented authorization/payment error\", function () { pm.expect([200,202,400,401,403,404,409,413,422,502,503]).to.include(pm.response.code); });",
+              "pm.test(\"Response never contains client secret or secret key\", function () { pm.expect(pm.response.text()).not.to.match(/client_secret|sk_live_|sk_test_/); });"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Read verified payment status",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "{{authentication}}"
+          },
+          {
+            "key": "Accept",
+            "value": "application/json"
+          }
+        ],
+        "url": {
+          "raw": "{{base_url}}/wp-json/quixdevs-stripe-rest-payments/v1/orders/{{order_id}}/status",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "wp-json",
+            "quixdevs-stripe-rest-payments",
+            "v1",
+            "orders",
+            "{{order_id}}",
+            "status"
+          ]
+        },
+        "description": "Requires HTTPS and owner identity or both integration grants. No guest access. Keep authorization and payment URLs confidential."
+      },
+      "response": [],
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test(\"Expected success or documented authorization/payment error\", function () { pm.expect([200,202,400,401,403,404,409,413,422,502,503]).to.include(pm.response.code); });",
+              "pm.test(\"Response never contains client secret or secret key\", function () { pm.expect(pm.response.text()).not.to.match(/client_secret|sk_live_|sk_test_/); });"
+            ]
+          }
+        }
+      ]
+    }
+  ]
+}

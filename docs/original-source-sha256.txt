@@ -1,0 +1,4 @@
+465f4f4f4da386048039f2c8143b7f35613418addba5c481fb77f26de8eab66f  eventpro-wc-stripe-api-payment/eventpro-wc-stripe-api-payment.php
+e54a8c5edef34b0b4b6e59783477cae68449ac00db62629f9596c3e1135a0f88  eventpro-wc-stripe-api-payment/inc/class-eventpro-wc-stripe-controller.php
+267f7a2e19dfa9df99af774520985a0e521925293ea5b7e767ab06969d06bf91  eventpro-wc-stripe-api-payment/LICENSE
+e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855  eventpro-wc-stripe-api-payment/README.md

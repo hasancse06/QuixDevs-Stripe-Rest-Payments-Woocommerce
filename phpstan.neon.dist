@@ -1,0 +1,17 @@
+parameters:
+    level: 5
+    phpVersion: 80200
+    treatPhpDocTypesAsCertain: false
+    dynamicConstantNames:
+        - WC_VERSION
+        - WC_STRIPE_VERSION
+        - PHP_VERSION
+    paths:
+        - includes
+    scanFiles:
+        - vendor/php-stubs/wordpress-stubs/wordpress-stubs.php
+        - vendor/php-stubs/woocommerce-stubs/woocommerce-stubs.php
+        - tools/stripe-stubs.php
+    tmpDir: .phpstan-cache
+    bootstrapFiles:
+        - tools/analysis-bootstrap.php
