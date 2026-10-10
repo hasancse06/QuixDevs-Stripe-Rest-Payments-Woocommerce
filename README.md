@@ -177,9 +177,14 @@ See [CONTRIBUTING.md](CONTRIBUTING.md). The source repository includes developme
 
 **[Md Abu Hasan (M A Hasan)](https://hasan.online/)**
 
-Full-Stack Software Engineer with 10+ years of experience building WordPress, WooCommerce, PHP, Laravel, Ionic Angular, SaaS applications and REST API integrations.
+Full-Stack Software Engineer with **10+ years of experience** building web applications, SaaS platforms, WordPress and WooCommerce plugins, and hybrid mobile applications.
 
-[Portfolio](https://hasan.online/) · [Udemy](https://www.udemy.com/user/m-a-hasan-2/) · [Envato](https://themeforest.net/user/hasanonline) · [Blog](https://blog.hasan.online)
+**Technical Expertise:** PHP, Laravel, WordPress, WooCommerce, Ionic Angular, TypeScript, REST APIs, and AI integrations.
+
+- 🌐 **Portfolio & About Me:** [hasan.online](https://hasan.online/)
+- 🎓 **Udemy Instructor:** [View Profile](https://www.udemy.com/user/m-a-hasan-2/)
+- 🛠️ **Envato Author:** [View Portfolio](https://themeforest.net/user/hasanonline)
+- ✍️ **Technical Blog:** [blog.hasan.online](https://blog.hasan.online)
 
 ## Maintained by
 
