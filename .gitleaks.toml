@@ -1,0 +1,21 @@
+title = "QuixDevs Stripe distribution source scan"
+
+[extend]
+useDefault = true
+
+# Scan maintained source and the extracted runtime separately.
+[[allowlists]]
+description = "Installed development dependencies and generated local output"
+paths = [
+  '''(^|/)(vendor|node_modules|[.]git|__pycache__|[.]phpunit[.]cache|[.]phpstan-cache)(/|$)''',
+  '''(^|/)(build|dist|coverage|docs/verification)(/|$)''',
+]
+
+# A request-retry fixture, not an authentication key. Restrict the exception
+# to this exact literal AND this exact unit-test file; scan the rest normally.
+[[allowlists]]
+description = "Documented dummy idempotency request header fixture"
+condition = "AND"
+paths = ['''(^|/)tests/Unit/PaymentTest[.]php$''']
+regexTarget = "secret"
+regexes = ['''^dummy-idempotency-0001$''']

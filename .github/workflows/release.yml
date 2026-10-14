@@ -1,0 +1,97 @@
+name: Verify Development Distribution
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Existing reviewed tag containing this workflow (must match 1.0.0)
+        required: true
+        type: string
+        default: v1.0.0
+
+# Development-only: no job can create tags, edit releases or publish assets.
+permissions:
+  contents: read
+
+concurrency:
+  group: stripe-distribution-${{ inputs.tag }}
+  cancel-in-progress: false
+
+jobs:
+  identity:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      tag: ${{ steps.identity.outputs.tag }}
+      commit: ${{ steps.identity.outputs.commit }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: ${{ inputs.tag }}
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Validate existing tag, clean checkout and unchanged version
+        id: identity
+        env:
+          RELEASE_TAG: ${{ inputs.tag }}
+        run: python3 tools/prepare-release.py --tag "$RELEASE_TAG" --github-output "$GITHUB_OUTPUT"
+
+  quality:
+    needs: identity
+    uses: ./.github/workflows/ci.yml
+    with:
+      ref: ${{ needs.identity.outputs.commit }}
+    permissions:
+      contents: read
+
+  package:
+    needs: [identity, quality]
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: ${{ needs.identity.outputs.commit }}
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: shivammathur/setup-php@d52fc211a0436f8839a587b3b5b8efddab4744ea # v2
+        with:
+          php-version: '8.4'
+          coverage: none
+      - name: Recheck source/tag identity
+        env:
+          RELEASE_TAG: ${{ needs.identity.outputs.tag }}
+        run: python3 tools/prepare-release.py --tag "$RELEASE_TAG"
+      - name: Install checksum-pinned official Gitleaks
+        run: python3 tools/install-gitleaks.py --destination "$RUNNER_TEMP/quixdevs-release-tools"
+      - name: Scan maintained source for secrets
+        run: '"$RUNNER_TEMP/quixdevs-release-tools/gitleaks" dir . --config .gitleaks.toml --ignore-gitleaks-allow --redact --no-banner'
+      - name: Build and verify the development-only runtime package
+        run: |
+          python3 tools/check-source.py
+          python3 tools/package.py
+          python3 tools/verify-package.py
+          python3 tools/check-repository.py
+          unzip -t dist/quixdevs-stripe-rest-payments.zip
+          (cd dist && sha256sum --check quixdevs-stripe-rest-payments.zip.sha256)
+      - name: Scan every extracted runtime file for secrets
+        run: |
+          runtime_dir=$(mktemp -d "$RUNNER_TEMP/quixdevs-runtime.XXXXXX")
+          python3 -m zipfile -e dist/quixdevs-stripe-rest-payments.zip "$runtime_dir"
+          "$RUNNER_TEMP/quixdevs-release-tools/gitleaks" dir "$runtime_dir" --config .gitleaks.toml --ignore-gitleaks-allow --redact --no-banner
+      - name: Upload verified ZIP only to a private repository's Actions artifacts
+        if: ${{ github.event.repository.private == true }}
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
+        with:
+          name: stripe-development-${{ needs.identity.outputs.tag }}
+          path: |
+            dist/quixdevs-stripe-rest-payments.zip
+            dist/quixdevs-stripe-rest-payments.zip.sha256
+            dist/package-manifest.json
+          if-no-files-found: error
+          retention-days: 14
+          compression-level: 0
+      - name: Record private-distribution restriction
+        if: ${{ github.event.repository.private != true }}
+        run: |
+          printf '%s\n' 'Verified development package was NOT uploaded: this repository is public. Run the same checks in a private repository for private Actions artifacts. No GitHub Release was created.' >> "$GITHUB_STEP_SUMMARY"

@@ -2,11 +2,11 @@
 
 ## Upload the prepared source
 
-This repository folder is `quixdevs-stripe-rest-payments-github`. The suggested remote name is `quixdevs-stripe-rest-payments`; the plugin slug stays `quixdevs-stripe-rest-payments`.
+This repository folder is `quixdevs-stripe-rest-payments-github`. The verified remote is `hasancse06/QuixDevs-Stripe-Rest-Payments-Woocommerce`; the plugin slug stays `quixdevs-stripe-rest-payments`.
 
 1. Run `python3 tools/check-source.py` and `python3 tools/check-repository.py` from the repository root.
 2. Review `git status --short --ignored` and the intended upload files with `git ls-files --others --exclude-standard`. Keep source, tests, Composer manifests/lockfile, `.github`, documentation, editable artwork and numbered screenshots.
-3. Create the intended GitHub repository under the publisher’s account. Upload the **contents** of this folder at its root, or add its remote and push after reviewing a commit. Include `.gitignore`, `.gitattributes` and `.github` when using a file picker; hidden files may need to be shown.
+3. The GitHub source repository already exists. Upload the **contents** of this folder at its root, or add its remote and push after reviewing a commit. Include `.gitignore`, `.gitattributes` and `.github` when using a file picker; hidden files may need to be shown.
 4. Apply the description/topics in [the listing guide](github-listing.md). Set `docs/branding/github-social-preview.png` as the repository social preview. The README already embeds the banner and all four screenshots with relative paths.
 5. Run the prepared GitHub Actions workflow and inspect its results. Local checks do not establish remote CI success.
 
@@ -14,9 +14,9 @@ The `.gitignore` excludes installed dependencies, caches, local credentials/sett
 
 ## Build an installable development package
 
-Run `python3 tools/package.py`. It creates `build/quixdevs-stripe-rest-payments.zip` and `build/package-manifest.json`. Review the manifest and extracted contents. The ZIP has the correct plugin root, an internal autoloader and only allowlisted runtime/guide files. GitHub source archives are not the curated installation asset.
+Run `python3 tools/package.py`. It creates `dist/quixdevs-stripe-rest-payments.zip`, `dist/quixdevs-stripe-rest-payments.zip.sha256` and `dist/package-manifest.json`. Review the manifest and extracted contents. The ZIP has the correct plugin root, an internal autoloader and only allowlisted runtime files, readme and license. GitHub source archives are not the curated installation asset.
 
-Before sharing a development prerelease, rerun unit/integration tests, PHPCS, PHPStan and extracted-package Plugin Check on the final runtime. Install and activate on disposable WordPress. Describe the build as development-only and attach the curated ZIP as a prerelease asset using [the draft notes](github-release-notes.md).
+Before sharing a private development build, rerun unit/integration tests, PHPCS, PHPStan and extracted-package Plugin Check on the final runtime. Install and activate on disposable WordPress. Describe it as development-only. The [manual verification workflow](../.github/workflows/release.yml) uploads ZIP artifacts only in private repositories; it creates no release. Follow [release distribution](release-distribution.md) for the existing-tag procedure and future approved-draft publication steps.
 
 ## Stable payment release gates
 

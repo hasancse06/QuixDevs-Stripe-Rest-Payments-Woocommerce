@@ -3,7 +3,7 @@
  * Plugin Name: QuixDevs Stripe REST Payments
  * Description: Secure REST API payment integration for WooCommerce stores using the official Stripe Payment Gateway.
  * Version: 1.0.0
-  * Author: QuixDevs
+ * Author: QuixDevs
  * Author URI: https://quixdevs.com/
  * Requires at least: 6.9
  * Requires PHP: 8.2

@@ -3,7 +3,7 @@
 from pathlib import Path
 import re
 root=Path(__file__).resolve().parents[1]
-skip={'vendor','build','.git','.phpstan-cache','.phpunit.cache'}
+skip={'vendor','node_modules','build','dist','__pycache__','.git','.phpstan-cache','.phpunit.cache'}
 for path in root.rglob('*'):
     if not path.is_file() or any(p in skip for p in path.relative_to(root).parts): continue
     assert path.name not in {'.env','wp-config.php','debug.log'}, path

@@ -10,7 +10,7 @@ import xml.etree.ElementTree as ET
 import zipfile
 
 ROOT = Path(__file__).resolve().parents[1]
-SKIP = {'vendor', 'node_modules', '.git', 'build', '.phpunit.cache', '.phpstan-cache'}
+SKIP = {'vendor', 'node_modules', '.git', 'build', 'dist', '__pycache__', '.phpunit.cache', '.phpstan-cache'}
 LINK = re.compile(r'!?\[[^\]]*\]\(([^\s)]+)(?:\s+"[^"]*")?\)')
 
 
@@ -81,26 +81,18 @@ for path in ROOT.rglob('*.json'):
         json.loads(path.read_text())
 
 if (ROOT / '.git').is_dir():
-    ignored = ['vendor/autoload.php', 'node_modules/example.js', '.env', '.env.local', 'wp-config.php', 'tests/local-config.php', 'build/plugin.zip', 'store.sql', 'debug.log', '.DS_Store', 'docs/verification/local.txt', 'docs/screenshots/capture-original-test.png']
+    ignored = ['vendor/autoload.php', 'node_modules/example.js', '.env', '.env.local', 'wp-config.php', 'tests/local-config.php', 'build/plugin.zip', 'dist/plugin.zip', 'store.sql', 'debug.log', '.DS_Store', 'docs/verification/local.txt', 'docs/screenshots/capture-original-test.png']
     tracked = ['composer.lock', 'phpunit.xml.dist', 'phpstan.neon.dist', '.github/workflows/ci.yml', 'tests/Unit/PaymentTest.php', 'docs/branding/github-social-preview.png', 'docs/screenshots/01-stripe-rest-settings.png']
     for candidate in ignored + tracked:
         result = subprocess.run(['git', 'check-ignore', '--no-index', '-q', candidate], cwd=ROOT, check=False)
         assert result.returncode == (0 if candidate in ignored else 1), f'Unexpected ignore rule: {candidate}'
 
-archive = ROOT / 'build/quixdevs-stripe-rest-payments.zip'
+archive = ROOT / 'dist/quixdevs-stripe-rest-payments.zip'
 if archive.exists():
-    prefix = 'quixdevs-stripe-rest-payments/'
-    with zipfile.ZipFile(archive) as package:
-        assert package.testzip() is None
-        names = package.namelist()
-        assert all(name.startswith(prefix) for name in names)
-        assert not any('/vendor/' in name or '/tests/' in name or '/.git' in name or '/branding/' in name or '/screenshots/' in name or '/wordpress-org-assets/' in name for name in names)
-        files = {ROOT / name[len(prefix):]: package.read(name) for name in names}
-        for path, data in files.items():
-            if path.suffix == '.md':
-                links += check_links(path, data.decode(), files.__contains__, lambda dest: files[dest].decode())
-    manifest = json.loads((ROOT / 'build/package-manifest.json').read_text())
+    from package import verify_archive
     import hashlib
+    names = verify_archive(archive)
+    manifest = json.loads((ROOT / 'dist/package-manifest.json').read_text())
     assert hashlib.sha256(archive.read_bytes()).hexdigest() == manifest['sha256']
     assert len(names) == manifest['files']
 

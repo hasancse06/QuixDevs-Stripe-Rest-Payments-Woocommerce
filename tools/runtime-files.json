@@ -1,0 +1,33 @@
+{
+  "slug": "quixdevs-stripe-rest-payments",
+  "files": [
+    "quixdevs-stripe-rest-payments.php",
+    "uninstall.php",
+    "readme.txt",
+    "LICENSE",
+    "includes/Admin/Settings_Page.php",
+    "includes/Authentication/Order_Authorizer.php",
+    "includes/Authentication/Request_Authenticator.php",
+    "includes/Autoload.php",
+    "includes/Bootstrap.php",
+    "includes/Data/Payment_Repository.php",
+    "includes/Dependencies.php",
+    "includes/Payments/Idempotency_Manager.php",
+    "includes/Payments/Payment_Lock.php",
+    "includes/Payments/Payment_Result.php",
+    "includes/Payments/Payment_Service.php",
+    "includes/Payments/Payment_State.php",
+    "includes/Payments/Status_Verifier.php",
+    "includes/Plugin.php",
+    "includes/Rest/Payment_Controller.php",
+    "includes/Rest/Request_Validator.php",
+    "includes/Rest/Response_Factory.php",
+    "includes/Rest/Routes.php",
+    "includes/Stripe/Gateway_Compatibility.php",
+    "includes/Stripe/Stripe_Adapter_Interface.php",
+    "includes/Stripe/WooCommerce_Stripe_Adapter.php",
+    "includes/Support/Failure.php",
+    "includes/Support/Logger.php"
+  ],
+  "runtime_dependencies": []
+}
