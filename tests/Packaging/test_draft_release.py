@@ -433,7 +433,7 @@ class DraftReleaseTests(unittest.TestCase):
         for candidates in [[], [record], [record, other]]:
             with self.subTest(count=len(candidates)), patch.object(draft, 'gh') as cli, \
                  patch.object(draft, 'api', side_effect=[{'full_name': REPO, 'permissions': {'push': True}}, candidates] + candidates), \
-                 patch.object(draft, 'create_draft') as create, patch.object(draft, 'remote_commit') as tag_mutator, \
+                 patch.object(draft, 'create_draft') as create, patch.object(draft, 'remote_commit', return_value=COMMIT) as tag_reader, \
                  patch.object(draft._VERIFY, 'verify') as package_check, contextlib.redirect_stdout(io.StringIO()) as output:
                 report = draft.diagnose(REPO, TAG)
             self.assertEqual(report['unique_release_count'], len(candidates))
@@ -441,7 +441,10 @@ class DraftReleaseTests(unittest.TestCase):
             self.assertEqual([r['id'] for r in report['releases']], [r['id'] for r in candidates])
             cli.assert_called_once_with(['auth', 'status', '--hostname', 'github.com'])
             create.assert_not_called()
-            tag_mutator.assert_not_called()
+            self.assertEqual(tag_reader.call_args_list, [unittest.mock.call(REPO, TAG)] * 2)
+            self.assertEqual(report['tag_commit'], COMMIT)
+            self.assertEqual(report['draft_count'], sum(r['draft'] for r in candidates))
+            self.assertEqual(report['published_count'], sum(not r['draft'] for r in candidates))
             package_check.assert_not_called()
             for actual, source in zip(report['releases'], candidates):
                 self.assertEqual(set(actual), {'id', 'name', 'tag_name', 'draft', 'prerelease', 'html_url', 'created_at', 'asset_names'})
@@ -453,8 +456,8 @@ class DraftReleaseTests(unittest.TestCase):
             with self.assertRaisesRegex(draft.ReleaseError, 'authentication unavailable'):
                 draft.diagnose(REPO, TAG)
             client.assert_not_called()
-        with patch.object(draft, 'gh'), patch.object(draft, 'api', return_value={'full_name': REPO, 'permissions': {'push': False}}) as client:
-            with self.assertRaisesRegex(draft.ReleaseError, 'draft inventory visibility'):
+        with patch.object(draft, 'gh'), patch.object(draft, 'api', return_value={'full_name': 'other/repo'}) as client:
+            with self.assertRaisesRegex(draft.ReleaseError, 'repository_identity_mismatch'):
                 draft.diagnose(REPO, TAG)
             self.assertEqual(client.call_count, 1)
         with patch.object(draft, 'gh') as client:
@@ -504,13 +507,100 @@ class DraftReleaseTests(unittest.TestCase):
             cli.write_text("#!/usr/bin/env python3\nimport sys, json\na=sys.argv[1:]\n"
                 "if a[:2]==['auth','status']: sys.exit(0)\n"
                 "if a[:4]!=['api','--include','--method','GET']: sys.exit(99)\n"
-                "print('HTTP/2.0 200 OK\\n\\n'+json.dumps({'full_name':" + repr(REPO) + "} if a[-1]==" + repr('repos/' + REPO) + " else []))\n")
+                "data={'full_name':" + repr(REPO) + ", 'permissions':{'push':False}} if a[-1]==" + repr('repos/' + REPO) + " else {'object': {'type':'commit','sha':" + repr(COMMIT) + "}} if '/git/ref/tags/' in a[-1] else []\n"
+                "print('HTTP/2.0 200 OK\\n\\n'+json.dumps(data))\n")
             cli.chmod(0o700)
-            environment = dict(os.environ, PATH=temporary + os.pathsep + os.environ['PATH'], PYTHONDONTWRITEBYTECODE='1')
+            environment = dict(os.environ, PATH=temporary + os.pathsep + os.environ['PATH'], PYTHONDONTWRITEBYTECODE='1', GH_TOKEN='ghs_' + 'I' * 36)
             result = subprocess.run([sys.executable, str(ROOT / 'tools/create-draft-release.py'),
                 '--diagnose', '--repo', REPO, '--tag', TAG], env=environment, capture_output=True, text=True)
             self.assertEqual(result.returncode, 0, result.stderr)
             self.assertEqual(json.loads(result.stdout)['unique_release_count'], 0)
+            self.assertEqual(json.loads(result.stdout)['tag_commit'], COMMIT)
+            self.assertNotIn(environment['GH_TOKEN'], result.stdout + result.stderr)
+
+    def test_installation_token_ignores_collaborator_permissions(self):
+        record = FakeGitHub(self.directory, existing=True).details
+        other = dict(record, id=124)
+        tag_ref = {'object': {'type': 'commit', 'sha': COMMIT}}
+        # Both collaborator flags explicitly false and absent must work when
+        # the authenticated repository/tag/releases API requests succeed.
+        for fields in [{'permissions': {'push': False, 'admin': False, 'maintain': False, 'pull': False}},
+                       {'permissions': {}}, {}]:
+            for candidates in [[], [record], [record, other]]:
+                with self.subTest(fields=fields, count=len(candidates)), \
+                     patch.dict(draft.os.environ, {'GH_TOKEN': 'ghs_' + 'I' * 36}), \
+                     patch.object(draft, 'gh') as cli, \
+                     patch.object(draft, 'api', side_effect=[dict(full_name=REPO, **fields), tag_ref, candidates] + candidates + [tag_ref]) as client, \
+                     patch.object(draft, 'create_draft') as create, contextlib.redirect_stdout(io.StringIO()):
+                    report = draft.diagnose(REPO, TAG)
+                self.assertEqual(report['draft_count'], len(candidates))
+                self.assertEqual(report['unique_release_count'], len(candidates))
+                self.assertEqual(report['tag_commit'], COMMIT)
+                self.assertEqual(client.call_args_list[1].args[0], f'repos/{REPO}/git/ref/tags/{TAG}')
+                self.assertIn('per_page=100&page=1', client.call_args_list[2].args[0])
+                cli.assert_called_once_with(['auth', 'status', '--hostname', 'github.com'])
+                create.assert_not_called()
+
+    def test_installation_token_diagnostics_respect_actual_http_failures(self):
+        repository = {'full_name': REPO, 'permissions': {'push': False}}
+        tag_ref = {'object': {'type': 'commit', 'sha': COMMIT}}
+        record = FakeGitHub(self.directory, existing=True).details
+        paths = [f'repos/{REPO}', f'repos/{REPO}/git/ref/tags/{TAG}',
+                 f'repos/{REPO}/releases?per_page=100&page=1', f'repos/{REPO}/releases/123']
+        for index, path in enumerate(paths):
+            for status in [401, 403, 404, 503]:
+                def http_response(value, code=200):
+                    return subprocess.CompletedProcess([], int(code != 200),
+                        f'HTTP/2.0 {code} status\n\n' + json.dumps(value), 'SECRET_STDERR')
+                prior = [repository, tag_ref, [record]][:index]
+                responses = [http_response(value) for value in prior] + [http_response({'message': 'SECRET_BODY'}, status)]
+                with self.subTest(path=path, status=status), \
+                     patch.dict(draft.os.environ, {'GH_TOKEN': 'ghs_' + 'I' * 36}), \
+                     patch.object(draft, 'gh') as cli, \
+                     patch.object(draft.subprocess, 'run', side_effect=responses), \
+                     contextlib.redirect_stdout(io.StringIO()) as output:
+                    with self.assertRaises(draft.ReleaseError) as raised:
+                        draft.diagnose(REPO, TAG)
+                message = str(raised.exception)
+                self.assertIn('GET ' + draft.safe_endpoint(path), message)
+                self.assertIn(f'HTTP {status}', message)
+                self.assertNotIn('SECRET', message)
+                self.assertEqual(output.getvalue(), '')
+                cli.assert_called_once_with(['auth', 'status', '--hostname', 'github.com'])
+
+    def test_installation_token_preserves_pagination_and_id_deduplication(self):
+        record = FakeGitHub(self.directory, existing=True).details
+        other = dict(record, id=124)
+        tag_ref = {'object': {'type': 'commit', 'sha': COMMIT}}
+        first = [record] + [{'tag_name': 'other'}] * 99
+        responses = [{'full_name': REPO, 'permissions': {'push': False}}, tag_ref,
+                     first, [record, other], record, other, tag_ref]
+        with patch.object(draft, 'gh') as cli, patch.object(draft, 'api', side_effect=responses) as client, \
+             contextlib.redirect_stdout(io.StringIO()):
+            report = draft.diagnose(REPO, TAG)
+        self.assertEqual(report['unique_release_count'], 2)
+        self.assertEqual(report['draft_count'], 2)
+        self.assertEqual(report['matching_occurrences'], 3)
+        self.assertEqual(report['repeated_occurrences'], 1)
+        self.assertEqual(report['pages_scanned'], 2)
+        paths = [call.args[0] for call in client.call_args_list]
+        self.assertEqual(paths.count(f'repos/{REPO}/releases/123'), 1)
+        self.assertEqual(paths.count(f'repos/{REPO}/releases/124'), 1)
+        self.assertIn(f'repos/{REPO}/releases?per_page=100&page=2', paths)
+        cli.assert_called_once_with(['auth', 'status', '--hostname', 'github.com'])
+
+    def test_diagnostics_peel_annotated_tag_and_reject_changed_tag(self):
+        annotation = {'object': {'type': 'tag', 'sha': 'b' * 40}}
+        commit = {'object': {'type': 'commit', 'sha': COMMIT}}
+        with patch.object(draft, 'gh'), patch.object(draft, 'api', side_effect=[{'full_name': REPO}, annotation, commit, [], annotation, commit]) as client, \
+             contextlib.redirect_stdout(io.StringIO()):
+            self.assertEqual(draft.diagnose(REPO, TAG)['tag_commit'], COMMIT)
+        self.assertEqual(client.call_args_list[2].args[0], f"repos/{REPO}/git/tags/{'b' * 40}")
+        with patch.object(draft, 'gh'), patch.object(draft, 'api', side_effect=[{'full_name': REPO}, commit, [], {'object': {'type': 'commit', 'sha': 'c' * 40}}]), \
+             contextlib.redirect_stdout(io.StringIO()) as output:
+            with self.assertRaisesRegex(draft.ReleaseError, 'Remote tag changed during diagnostics'):
+                draft.diagnose(REPO, TAG)
+        self.assertEqual(output.getvalue(), '')
 
     def test_workflow_diagnostic_mode_guards_creation_and_uses_summary(self):
         body = (ROOT / '.github/workflows/release.yml').read_text()

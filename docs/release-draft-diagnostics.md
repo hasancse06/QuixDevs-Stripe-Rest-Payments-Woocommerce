@@ -11,6 +11,8 @@ The existing identity, quality and package gates still run. The final job uses i
 Open the run summary's **Release inventory diagnostics** section. It reports:
 
 - `unique_release_count`: distinct matching numeric release IDs, each confirmed through GET by ID.
+- `draft_count` and `published_count`: separate counts from the verified records.
+- `tag_commit`: the existing remote tag’s safely resolved commit, checked again after inventory verification.
 - `matching_occurrences`: matching rows across all list pages.
 - `repeated_occurrences`: rows repeating a previously counted ID.
 - `pages_scanned` and the inventory classification.
@@ -19,7 +21,7 @@ Open the run summary's **Release inventory diagnostics** section. It reports:
 
 Only selected metadata is printed. Release bodies, authors, authorization headers, CLI authentication output and raw server errors are omitted. Known authentication values and recognizable GitHub tokens are redacted from metadata; JSON escaping prevents names containing control characters from becoming workflow commands. Credentials/query strings and external URLs are not included in review links. No editor URL is invented from a numeric ID.
 
-The helper queries:
+Before listing releases, the helper confirms repository identity and reads the existing tag reference, safely peeling annotated tags. It checks that the tag still resolves to the same commit after inventory verification. These are GET requests and never create or move a tag. The helper queries:
 
 ```text
 GET /repos/hasancse06/QuixDevs-Stripe-Rest-Payments-Woocommerce/releases?per_page=100&page=1
@@ -40,7 +42,7 @@ python3 tools/create-draft-release.py --diagnose \
   --repo hasancse06/QuixDevs-Stripe-Rest-Payments-Woocommerce --tag v1.0.0
 ```
 
-No expected commit, clean checkout, local build or package modification is required to list metadata. Local GitHub authentication must already be available; no credentials should be pasted into logs or chat. An authenticated caller explicitly lacking push access is rejected because it cannot establish draft visibility.
+No expected commit, clean checkout, local build or package modification is required to list metadata. Local GitHub authentication must already be available; no credentials should be pasted into logs or chat. Authorization is evaluated through the authenticated repository/tag/releases API responses. The helper does not require repository `permissions.push` or a normal user collaborator role for an Actions installation token. Real HTTP failures still stop diagnostics with a safe method, endpoint, status and category.
 
 ## Why the Releases page can look empty
 
@@ -80,3 +82,17 @@ The runtime ZIP remains **27 files, 24,919 bytes**, with SHA-256:
 This correction changes the helper, release workflow, draft regression tests and this diagnostic guide. The already-modified `docs/release-distribution.md` was present before this task and remains byte-for-byte unchanged by it. Payment PHP, plugin version, package allowlist/verifier, existing tag, checksum sidecar and prior checks remain intact.
 
 Local validation: **55 distribution tests** (40 draft-release/diagnostic tests and 15 packaging tests), actionlint on CI/release workflows, source and repository/documentation checks, ZIP/source/checksum/CRC/PHP syntax/autoload verification, and diff whitespace checks. Added coverage includes repeated IDs within/across pages, distinct-ID refusal without mutations, read-only empty/single/multiple reports, draft/published metadata, changed/disappearing records, auth/visibility failures, safe metadata/summary output, token redaction, CLI diagnostics without a commit argument and workflow mutation gating. No live authenticated Actions diagnostic or payment acceptance test is claimed.
+
+## Installation-token authentication correction
+
+The previous diagnostic incorrectly treated this collaborator-permission condition as a mandatory installation-token authorization check:
+
+```python
+permissions = repository.get('permissions', {})
+if isinstance(permissions, dict) and permissions.get('push') is False:
+    raise ReleaseError('Authenticated caller lacks push access; draft inventory visibility cannot be verified.')
+```
+
+This produced the reported error before the releases API was queried, even with the workflow's confirmed Contents write permission and `GH_TOKEN`. The guard has been removed. Private CLI authentication checking remains; repository identity, the existing remote tag and the fully paginated releases API are verified using their real responses. Every distinct matching ID is re-read, and the tag commit is checked again before reporting results. False or absent collaborator flags cannot block a successful installation-token inventory. API denials and malformed or incomplete responses remain failures; no write probe is used to test permissions.
+
+Local validation for this correction: **59 distribution tests** (44 draft/diagnostic and 15 packaging tests), actionlint for both workflows, source/repository checks and ZIP/source/checksum/CRC/PHP syntax/autoload verification. New regressions cover installation tokens with false/absent collaborator flags, zero/one/multiple drafts, real HTTP response parsing for repository/tag/inventory/ID denials, pagination with repeated IDs, annotated tags and a tag changing during diagnostics. The workflow configuration, normal draft creation/published-release protections, runtime/version, existing Git tag, ZIP and checksum sidecar remain unchanged. No authenticated remote run, commit, push, deletion or publication was performed by this correction.

@@ -196,6 +196,8 @@ def diagnostic_report(repo, tag, inventory):
                         'asset_names': [safe_metadata_text(a['name']) for a in assets]})
     count = len(records)
     return {'repository': repo, 'tag': tag, 'unique_release_count': count,
+            'draft_count': sum(record['draft'] for record in records),
+            'published_count': sum(not record['draft'] for record in records),
             'matching_occurrences': inventory['matching_occurrences'],
             'repeated_occurrences': inventory['repeated_occurrences'],
             'pages_scanned': inventory['pages_scanned'], 'verified_by_id': True,
@@ -222,11 +224,16 @@ def diagnose(repo, tag, summary_file=None):
     # A successful public GET is not evidence that the caller can see drafts.
     # Check authentication privately; never print gh auth stdout/stderr.
     gh(['auth', 'status', '--hostname', 'github.com'])
-    repository = confirm_repository(repo)
-    permissions = repository.get('permissions', {})
-    if isinstance(permissions, dict) and permissions.get('push') is False:
-        raise ReleaseError('Authenticated caller lacks push access; draft inventory visibility cannot be verified.')
-    report = diagnostic_report(repo, tag, matching_inventory(repo, tag))
+    confirm_repository(repo)
+    # Installation tokens are authorized by their scoped API access. Repository
+    # permissions.push describes collaborator capabilities and is not a valid
+    # mandatory gate for the Actions token. Check actual GET responses instead.
+    tag_commit = remote_commit(repo, tag)
+    inventory = matching_inventory(repo, tag)
+    if remote_commit(repo, tag) != tag_commit:
+        raise ReleaseError('Remote tag changed during diagnostics; rerun before reviewing the inventory.')
+    report = diagnostic_report(repo, tag, inventory)
+    report['tag_commit'] = tag_commit
     emit_diagnostics(report, summary_file)
     return report
 

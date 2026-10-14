@@ -151,20 +151,20 @@ The added tests mock the GitHub CLI/API and cover draft creation flags/assets/no
 
 The configured remote is [hasancse06/QuixDevs-Stripe-Rest-Payments-Woocommerce](https://github.com/hasancse06/QuixDevs-Stripe-Rest-Payments-Woocommerce), a public repository. The maintainer explicitly approved draft preparation; the earlier private-artifact-only restriction is superseded. Public preparation does not prove merchant acceptance or turn the package's recorded development status into PASS.
 
-1. Commit and push the reviewed source to the default branch, currently `master`, before preparing its tag. The workflow and tools must exist in both the default branch and tagged source.
-2. Create or explicitly review/retarget the existing **v1.0.0** tag to that exact commit. Plugin header and `readme.txt` Stable tag stay 1.0.0. The workflow never creates or moves tags.
+1. Review and commit the release automation correction on the default branch, currently `master`. Push it only when the maintainer chooses to do so.
+2. Keep the existing **v1.0.0** tag unchanged. Its source commit is `d93820ce3c64dd70fe63f851df328bcfe8830463`; plugin header and `readme.txt` Stable tag stay 1.0.0.
 3. A push of a `v*` tag triggers **Prepare Draft Release**. Alternatively choose **Actions → Prepare Draft Release → Run workflow** and enter the existing reviewed tag.
 4. The identity job verifies the clean tag/commit and version. The unchanged reusable CI runs PHP syntax, PHPUnit, WooCommerce integration, PHPCS, PHPStan, packaging checks, installed-ZIP smoke checks and runtime-enabled Plugin Check. The existing PHP 8.2/8.3/8.4 quality and MySQL 8 integration jobs remain required.
 5. After CI succeeds, the package job rechecks identity, scans maintained source, builds and verifies the allowlisted ZIP/checksum/manifest, and scans the extracted runtime. Professional notes are generated from [the release notes source](github-release-notes.md) with this exact package size, file count and checksum.
 6. Verified artifacts (ZIP, checksum, manifest and generated notes) are passed to the final draft job, including in public repositories. Actions artifacts use repository-reader access; they are no longer described as private to maintainers. [GitHub artifact access](https://docs.github.com/en/actions/how-tos/manage-workflow-runs/download-workflow-artifacts).
-7. Only the draft job has `contents: write`. It checks out the verified commit, revalidates the downloaded package, checks the current remote tag, and calls official **`gh release create --draft --prerelease --verify-tag`** with the exact target commit and notes. It attaches **`quixdevs-stripe-rest-payments.zip`** and **`quixdevs-stripe-rest-payments.zip.sha256`**.
+7. Only the draft job has `contents: write`. It checks out the verified commit, revalidates the downloaded package, confirms repository and remote tag identity, resolves drafts through the authenticated release inventory, and calls official **`gh release create --draft --prerelease --verify-tag`** with the exact target commit and notes. It attaches **`quixdevs-stripe-rest-payments.zip`** and **`quixdevs-stripe-rest-payments.zip.sha256`**.
 8. The result is an **unpublished prerelease draft** for explicit maintainer review. There is no automatic publish command or release-readiness override. New release drafts are prereleases because the package still records development-only acceptance status.
 
 The workflow uses pinned official actions/scanner references and only the final job receives a write token. `--verify-tag` prevents implicit tag creation; `--draft` keeps the release unpublished. [Official GitHub CLI create options](https://cli.github.com/manual/gh_release_create).
 
 ## Existing releases and retries
 
-The helper [create-draft-release.py](../tools/create-draft-release.py) validates local source/manifest/CRC/checksum/autoloading, exact artifact notes and remote tag identity before any release mutation. Annotated tags are peeled safely. Authentication/server failures are not treated as a missing release; only an explicit HTTP 404 permits creation.
+The helper [create-draft-release.py](../tools/create-draft-release.py) validates local source/manifest/CRC/checksum/autoloading, exact artifact notes and remote tag identity before any release mutation. Annotated tags are peeled safely. Only HTTP 404 from the exact published-release lookup `GET /repos/{owner}/{repo}/releases/tags/v1.0.0` has a normal missing state. Creation additionally requires confirmed repository/tag identity and a complete successful authenticated release inventory with no matching draft. Every other 404 and authentication/server failure stops preparation. Drafts are re-read by numeric release ID before and after each upload.
 
 - **Published release:** stop without changing its notes or assets.
 - **Matching draft:** reuse it; identical existing assets are left untouched and only missing assets are uploaded.
@@ -175,39 +175,50 @@ Existing assets are compared by provider SHA-256 digest, with byte-download comp
 
 Draft creation/API handling is tested with mocked GitHub CLI responses; no actual release was created locally and remote Actions execution is not claimed as passed.
 
-## Commit, push and tag commands for the maintainer
+## October 15 draft lookup correction
 
-Run from the source repository after reviewing the diff. These are instructions only; this task does not execute them:
+The original helper tolerated the initial by-tag lookup's 404, but reused that endpoint **without** the missing-release exception immediately after `gh release create --draft`. The exact faulty draft-verification request was:
+
+```text
+GET /repos/hasancse06/QuixDevs-Stripe-Rest-Payments-Woocommerce/releases/tags/v1.0.0
+```
+
+GitHub documents this as a **published-release** lookup. It cannot be relied on for an unpublished draft. The original test double incorrectly returned drafts from this endpoint, masking the defect. The corrected helper scans all authenticated release-list pages, resolves the matching draft ID, and verifies it with `GET /repos/{owner}/{repo}/releases/{id}`. Identical drafts are resumed; conflicting notes/source/assets and published releases still stop preparation. [GitHub release lookup and draft visibility](https://docs.github.com/en/rest/releases/releases#get-a-release-by-tag-name).
+
+Live unauthenticated checks returned 200 for the repository and annotated tag, and 404 for the published-release lookup. Public Actions metadata confirmed that the identity, quality and package jobs succeeded and the draft step failed. The failed step's private log and current draft inventory were inaccessible without authentication, so the precise historical request cannot be independently proven from that generic error alone. The by-tag post-create failure is reproduced in tests; it is not evidence of a missing repository or tag. The supplied original error string came from the GET API helper; a failed create/upload CLI command would have emitted a different generic CLI error. This rules out that string being emitted directly by POST release creation, while the old logging still prevents definitive historical attribution among the GET calls. A newly reported failure now includes the safe method, endpoint, HTTP status and category.
+
+| Response/request | Handling |
+| --- | --- |
+| GET published release by tag: 404 | Check authenticated inventory after confirming repository/tag; create only if all pages succeed and no matching draft exists |
+| GET repository: 404 | Repository missing or hidden by token access; stop |
+| GET tag reference/object: 404 | Tag missing or inaccessible; stop |
+| GET release inventory or numeric ID: 404 | Endpoint/release missing or inaccessible; stop |
+| 401 | Missing/invalid authentication; stop |
+| 403 | Token permission denial or rate limit; stop |
+| POST release creation: 404 | Access or workflow-file permission restriction; stop; never infer a missing release |
+| 422 / server errors / malformed response / invalid endpoint | Fail closed; no fallback creation |
+
+Only the final draft job has `permissions: contents: write`, and its CLI receives `GH_TOKEN: ${{ github.token }}`. Both were already configured correctly. Keep Actions enabled, allow the pinned actions under any organization policy, and allow this job's requested Contents write permission. Do not grant write permission to every job or add a PAT just to repair the GET lookup. A 404 alone cannot prove a permission denial because GitHub can hide inaccessible resources.
+
+GitHub separately documents that **creating** a release targeting a commit whose workflow files differ from the default branch requires Workflows write permission; `GITHUB_TOKEN` cannot receive that permission. A correction to `release.yml` can make this relevant to the unchanged older tag. If POST creation fails for that reason, an authorized maintainer must create an **unpublished** draft for the existing tag with the generated `dist/release-notes.md` and exact target commit, then let the workflow resume asset verification/upload. No published release or tag should be edited, and no token scope is broadened by this fix. [GitHub create-release restrictions](https://docs.github.com/en/rest/releases/releases#create-a-release).
+
+For manual recovery from the default branch, the draft job extracts the corrected helper from `${{ github.workflow_sha }}` to `$RUNNER_TEMP`. `PYTHONPATH` points at the verified tagged source's tools; all runtime/package/notes/clean-checkout validation remains tied to the tag. This prevents a rerun from executing the broken helper stored in the unchanged tag and avoids altering the checked-out source. Existing tag-push jobs use their own workflow commit; old failed runs must be replaced by a fresh default-branch manual dispatch after the maintainer deploys the correction.
+
+Local verification for this correction passed: **45 distribution tests** (30 draft-release and 15 packaging regressions), actionlint for both workflows, source checks, repository/documentation checks, and ZIP/source/CRC/checksum/PHP syntax/autoload validation. The tests cover first-release creation, draft/published states, repository/tag/inventory/ID failures, permission/server errors, pagination, safe diagnostics, and the temp-helper/tagged-source import arrangement. All 45 protected runtime/security/licensing/packaging/test/evidence files matched their initial hashes; HEAD, the existing tag object and the 27-file / 24,919-byte ZIP checksum were unchanged. Full payment suites were not rerun because their code and fixtures were untouched. Remote creation/upload was explicitly deferred by the maintainer; nothing was pushed or published.
+
+## Deploying the correction without changing the tag
+
+These commands are instructions for the maintainer; this task does not execute them:
 
 ```sh
 git diff --check
 git diff
-
-git add .github/workflows/release.yml tools/create-draft-release.py tests/Packaging/test_package.py tests/Packaging/test_draft_release.py README.md CHANGELOG.md docs/github-release-notes.md docs/github-publishing-checklist.md docs/release-distribution.md
-git commit -m "build: prepare verified v1.0.0 draft release"
+git add .github/workflows/release.yml tools/create-draft-release.py tests/Packaging/test_draft_release.py docs/release-distribution.md
+git commit -m "fix: resolve draft releases by ID and preserve v1.0.0 tag"
 git push origin master
 ```
 
-For a repository where `v1.0.0` does not already exist locally or remotely:
-
-```sh
-git tag -a v1.0.0 -m "QuixDevs Stripe REST Payments v1.0.0"
-git push origin refs/tags/v1.0.0
-```
-
-**In this repository, v1.0.0 already exists.** At inspection it was the annotated tag object `51d40c571b487fe63eb9dea0c283105cda17761d`, pointing to source commit `510eedba00cff244c5b6c481a19bdc65449b98ec` before these workflow changes. No published release was listed. The tag was left untouched.
-
-If the maintainer confirms this unpublished tag may be retargeted, first review its current remote value, the release inventory and the new source commit. Do not rewrite a tag used by a published release. Then, **only with that explicit maintainer decision**, replace the local annotation and push with a lease against the inspected remote tag object:
-
-```sh
-git ls-remote origin refs/tags/v1.0.0 'refs/tags/v1.0.0^{}'
-git log -1 --oneline
-
-git tag -f -a v1.0.0 -m "QuixDevs Stripe REST Payments v1.0.0"
-git push --force-with-lease=refs/tags/v1.0.0:51d40c571b487fe63eb9dea0c283105cda17761d origin refs/tags/v1.0.0
-```
-
-The lease refuses to replace a remote tag that changed since inspection. If the remote value differs, stop and review it; do not switch to an unrestricted force push. Without a reviewed tag containing the updated workflow/tools, v1.0.0 cannot build this new draft process.
+Then choose **Actions → Prepare Draft Release → Run workflow**, select **master**, and enter **v1.0.0**. Leave the existing tag unchanged. Review any reported API category before retrying; do not delete a matching draft or overwrite assets. No force push, tag move or automatic publication is required.
 
 ## Reviewing and publishing the draft
 
