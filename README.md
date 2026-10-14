@@ -90,7 +90,7 @@ The exact Stripe pin protects the inspected internal read interfaces. Declared m
 
 ## Maintainer Build
 
-For current staging review, maintainers can build the development ZIP locally. The manual release workflow creates no GitHub Release and uploads ZIP artifacts only in a private repository; the current public repository verifies without uploading the development ZIP. [Complete distribution procedure](docs/release-distribution.md).
+For current staging review, maintainers can build the development ZIP locally. Maintainer approval now permits tag-triggered or manual **unpublished draft-release preparation** in this public repository. After all required checks pass, the workflow attaches the ZIP and checksum to a prerelease draft; it never publishes the release. Payment acceptance and publisher-rights limits remain documented. [Complete distribution procedure](docs/release-distribution.md).
 
 Build and verify from the source repository:
 
@@ -166,7 +166,7 @@ Missing routes indicate a dependency, HTTPS or merchant-configuration issue. An 
 
 ## Verification
 
-Recorded local checks passed: **51 unit tests / 93 assertions**, **18 real WordPress/WooCommerce integration tests / 81 assertions**, **15 packaging tests**, legacy and HPOS storage, repeated four-process lock contention, PHPCS, PHPStan level 5, PHP syntax, extracted-package Plugin Check, and Composer-free ZIP installation and lifecycle retention.
+Recorded local checks passed: **51 unit tests / 93 assertions**, **18 real WordPress/WooCommerce integration tests / 81 assertions**, **15 packaging tests and 18 draft-release safety tests**, legacy and HPOS storage, repeated four-process lock contention, PHPCS, PHPStan level 5, PHP syntax, extracted-package Plugin Check, and Composer-free ZIP installation and lifecycle retention.
 
 Provider HTTP was mocked or blocked throughout. Real Stripe success, decline, 3DS, capture, native browser checkout, webhook recovery, mobile-device return behavior and remote CI execution remain unverified. [Test procedure and environment](docs/testing.md) · [Distribution verification](docs/release-distribution.md) · [Acceptance status](docs/publication-readiness.md).
 

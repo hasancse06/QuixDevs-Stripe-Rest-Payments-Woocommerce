@@ -145,13 +145,19 @@ class PackagingTests(unittest.TestCase):
         self.assertEqual(result.returncode, 1)
         self.assertIn(b'1 errors', result.stdout)
 
-    def test_workflow_has_no_release_write_path(self):
+    def test_workflow_limits_write_permission_to_unpublished_draft_job(self):
         body = (ROOT / '.github/workflows/release.yml').read_text()
+        before, draft = body.split('\n  draft:\n', 1)
         self.assertIn('workflow_dispatch:', body)
-        self.assertIn('needs: [identity, quality]', body)
-        self.assertIn('github.event.repository.private == true', body)
-        self.assertIn('contents: read', body)
-        for forbidden in ['contents: write', 'gh release create', 'gh release edit', 'git tag ', 'git push ', 'softprops/action-gh-release']:
+        self.assertIn("- 'v*'", body)
+        self.assertIn('needs: [identity, quality]', before)
+        self.assertIn('needs: [identity, quality, package]', draft)
+        self.assertIn('contents: read', before)
+        self.assertNotIn('contents: write', before)
+        self.assertEqual(draft.count('contents: write'), 1)
+        self.assertNotIn('repository.private', body)
+        self.assertIn('tools/create-draft-release.py', draft)
+        for forbidden in ['continue-on-error:', 'git tag ', 'git push ', 'softprops/action-gh-release', 'gh release edit']:
             self.assertNotIn(forbidden, body)
 
 

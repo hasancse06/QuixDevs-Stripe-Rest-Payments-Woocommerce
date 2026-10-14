@@ -2,7 +2,7 @@
 
 Prepared 2026-10-15 for **QuixDevs Stripe REST Payments 1.0.0**. This is packaging and release engineering work. The payment implementation, request/response contract, authentication, authorization, idempotency, Stripe adapter, order CRUD and HPOS behavior are unchanged. All runtime classes are byte-identical to the starting source. One extra space before `Author` in the main plugin header comment was removed to pass PHPCS; no version change occurred.
 
-**Status remains development-only.** Merchant payment acceptance and publisher-rights/publication requirements in [publication readiness](publication-readiness.md) remain open. The workflow has read-only repository permissions and creates no tags or GitHub Releases.
+**Package status remains development-only.** Merchant payment acceptance and publisher-rights/publication requirements in [publication readiness](publication-readiness.md) remain documented. The maintainer has now approved preparing an unpublished GitHub draft in the public repository. Tests/builds use read-only tokens; only the final draft job has `contents: write`. The workflow creates no tags and never publishes a release.
 
 ## Files changed
 
@@ -10,10 +10,11 @@ Prepared 2026-10-15 for **QuixDevs Stripe REST Payments 1.0.0**. This is packagi
 - `tools/runtime-files.json`, `tools/verify-package.py`, `tools/prepare-release.py`: new runtime, autoload, archive and existing-tag guards.
 - `tools/install-gitleaks.py`, `.gitleaks.toml`: pinned official secret scanner and narrow fixture exception.
 - `tools/installation-smoke.php`, `tools/verify-plugin-check.py`, `tests/Packaging/test_package.py`: installed-package and packaging verification.
-- `.github/workflows/release.yml`, `.github/workflows/ci.yml`: manual/private-only artifact process and reused automated checks.
+- `.github/workflows/release.yml`, `.github/workflows/ci.yml`: tag/manual draft preparation with preserved automated checks and write permission scoped to the draft job.
 - `tools/check-repository.py`, `tools/check-source.py`, `tools/provision-test-site.sh`: `dist/` checks and reproducible Plugin Check fixture version.
-- `README.md`, `CHANGELOG.md`, `docs/github-publishing-checklist.md`, this guide: download/install and distribution instructions.
-- `quixdevs-stripe-rest-payments.php`: one header-comment whitespace correction only.
+- `README.md`, `CHANGELOG.md`, `docs/github-publishing-checklist.md`, this guide: download/install, draft notes and distribution instructions.
+- `quixdevs-stripe-rest-payments.php`: historical header-comment whitespace correction only; untouched during draft-workflow finalization.
+- `tools/create-draft-release.py`, `tests/Packaging/test_draft_release.py`, `tests/Packaging/test_package.py`, `docs/github-release-notes.md`: draft-only CLI/asset safety, regression coverage and accurate release notes.
 
 The existing `.gitignore` already ignores `dist/`; no change was necessary. API guides, examples, Postman, screenshots, runtime classes, dependency lockfile and dated test/readiness evidence are retained.
 
@@ -109,7 +110,7 @@ Fresh isolated environment: PHP 8.4.13, WordPress 6.9, WooCommerce 10.9.0, offic
 | --- | --- |
 | Existing unit suite | 51 tests / 93 assertions passed |
 | Existing real WP/WooCommerce REST/storage suite | 18 tests / 81 assertions passed, legacy and HPOS, four-worker lock contention |
-| Packaging regressions | 15 tests passed: completeness, deterministic build, missing/symlinked/new files, source drift, root, dependency/version/tag guards, private-only workflow, and fail-closed Plugin Check result handling |
+| Packaging regressions | 15 tests passed: completeness, deterministic build, missing/symlinked/new files, source drift, root, dependency/version/tag guards, scoped draft-workflow permissions, and fail-closed Plugin Check result handling |
 | Runtime PHP syntax | All 25 PHP files passed |
 | PHPCS | Passed after correcting the pre-existing single-space header formatting issue |
 | PHPStan | Level 5, no errors, serial analysis |
@@ -126,32 +127,95 @@ The Gitleaks configuration excludes installed dependencies/generated output and 
 
 This task verified WP-CLI ZIP installation, real admin rendering and the native WordPress admin upload endpoint with an authenticated HTTP client over loopback. The fixture temporarily used a loopback URL for that upload and restored its HTTPS store URLs before the installed-package API smoke check. No interactive browser GUI upload or real Stripe test-mode payment occurred. PHP 8.2/8.3, MySQL 8 remote jobs and actual Actions artifact upload have not been executed locally. Remote workflow execution is prepared, not claimed as passed. Earlier test evidence is preserved separately in [testing](testing.md) and [the implementation report](implementation-report.md).
 
-## GitHub Actions instructions
+## Files changed for draft-workflow finalization
 
-The actual configured remote was verified as [hasancse06/QuixDevs-Stripe-Rest-Payments-Woocommerce](https://github.com/hasancse06/QuixDevs-Stripe-Rest-Payments-Woocommerce). It is **public** and had **no published releases** when inspected on 2026-10-15.
+- `.github/workflows/release.yml`
+- `tools/create-draft-release.py` (new)
+- `tests/Packaging/test_draft_release.py` (new)
+- `tests/Packaging/test_package.py`
+- `README.md`
+- `CHANGELOG.md`
+- `docs/github-release-notes.md`
+- `docs/github-publishing-checklist.md`
+- `docs/release-distribution.md`
 
-1. Review and commit/push these source changes yourself when ready. No commit, push or tag was performed by this task.
-2. A maintainer must separately review/create an existing `v1.0.0` tag containing the updated tools/workflows. Version and `readme.txt` Stable tag must match. The workflow never creates a tag and requires the tag’s clean checkout to match `HEAD`.
-3. Once the workflow is on the default branch, open **Actions → Verify Development Distribution → Run workflow** and enter the existing reviewed tag.
-4. The identity job validates the tag. The reusable CI workflow runs PHP 8.2/8.3/8.4 syntax/unit/PHPCS/PHPStan/packaging checks plus the disposable MySQL/WooCommerce integration job, installed-ZIP smoke checks, missing dependencies and runtime-enabled Plugin Check.
-5. Only after CI succeeds does the package job recheck identity, scan source, build/verify ZIP+checksum+manifest, and scan every extracted runtime file.
-6. In a **private repository**, the final step uploads only those three verified files as `stripe-development-v1.0.0`, retained for 14 days. Download them from the run’s Artifacts section and recheck the SHA-256 locally.
-7. In the current **public repository**, that ZIP-upload step is skipped; the run records the reason in its summary. A private copy with the same reviewed source/tag can be used for private artifact review. This task does not change repository visibility or create that copy.
+The runtime PHP, version 1.0.0, production allowlist, packager and existing CI are unchanged. Earlier distribution work is described separately above.
 
-Artifacts require a signed-in user with repository read access. A public repository’s Actions artifact is therefore not private to maintainers. The explicit repository-privacy guard preserves the requested private-only development distribution. [GitHub artifact access documentation](https://docs.github.com/en/actions/how-tos/manage-workflow-runs/download-workflow-artifacts).
+## Draft-workflow finalization verification
 
-The workflow is manual-only, uses pinned official action/scanner references, and has `contents: read`. There is no draft/publish job, write-token job, tag creation command, public release action or readiness override input. It cannot silently turn the development build into a release.
+For the newly authorized draft process, local verification passed: **51 unit tests / 93 assertions**, **18 WordPress/WooCommerce integration tests / 81 assertions**, and **33 distribution tests** (15 existing packaging guards plus 18 draft-release regressions). PHPCS, PHPStan level 5, all runtime PHP syntax, runtime-enabled Plugin Check (0 errors / 0 warnings), actionlint for both workflows, source/extracted-package Gitleaks and documentation checks passed.
 
-## Future approved draft and publication
+The added tests mock the GitHub CLI/API and cover draft creation flags/assets/notes, idempotent retries, missing/different assets, published-release refusal, edited notes, moved/annotated/cyclic tags, API errors, publication during upload, and artifact checksum/notes tampering and a dirty source checkout. They do not claim a live GitHub Actions run or actual draft creation. Runtime classes, bootstrap/version metadata, the allowlist, existing PHP tests, existing CI and dated implementation/testing/readiness records remain unchanged; the ZIP retains the checksum above. The obsolete private-only workflow regression was replaced with checks that write permission exists only in the unpublished-draft job and that required CI/publication safeguards remain intact.
 
-These instructions are a later maintainer procedure, not an action taken or enabled by this task:
+## Approved GitHub draft-release workflow
 
-1. Complete merchant Stripe test-mode success/decline/3DS/capture, native checkout/webhook/duplicate-retry and device-return acceptance; review persistent-cache/compatibility/security evidence and confirm publisher/source/brand rights. Review all [publication gates](publication-readiness.md).
-2. Review the final source, rerun all checks and decide whether version 1.0.0 is still appropriate. Any future version change is separately authorized work.
-3. Approve the source tag and release notes. Use GitHub **Releases → Draft a new release** and select the existing reviewed tag; save it as an **unpublished draft**.
-4. Upload the verified `quixdevs-stripe-rest-payments.zip`, `.zip.sha256` and `package-manifest.json` as assets. Compare the uploaded/downloaded checksum and test installation on staging.
-5. Review notes, licensing, supported versions and acceptance evidence. **Publish the approved draft manually** only after explicit maintainer approval. Never convert a pending development build into a stable release by changing a filename or workflow input.
-6. For an approved stable release eligible as latest, promote the following URL in the README only after the exact asset exists:
+The configured remote is [hasancse06/QuixDevs-Stripe-Rest-Payments-Woocommerce](https://github.com/hasancse06/QuixDevs-Stripe-Rest-Payments-Woocommerce), a public repository. The maintainer explicitly approved draft preparation; the earlier private-artifact-only restriction is superseded. Public preparation does not prove merchant acceptance or turn the package's recorded development status into PASS.
+
+1. Commit and push the reviewed source to the default branch, currently `master`, before preparing its tag. The workflow and tools must exist in both the default branch and tagged source.
+2. Create or explicitly review/retarget the existing **v1.0.0** tag to that exact commit. Plugin header and `readme.txt` Stable tag stay 1.0.0. The workflow never creates or moves tags.
+3. A push of a `v*` tag triggers **Prepare Draft Release**. Alternatively choose **Actions → Prepare Draft Release → Run workflow** and enter the existing reviewed tag.
+4. The identity job verifies the clean tag/commit and version. The unchanged reusable CI runs PHP syntax, PHPUnit, WooCommerce integration, PHPCS, PHPStan, packaging checks, installed-ZIP smoke checks and runtime-enabled Plugin Check. The existing PHP 8.2/8.3/8.4 quality and MySQL 8 integration jobs remain required.
+5. After CI succeeds, the package job rechecks identity, scans maintained source, builds and verifies the allowlisted ZIP/checksum/manifest, and scans the extracted runtime. Professional notes are generated from [the release notes source](github-release-notes.md) with this exact package size, file count and checksum.
+6. Verified artifacts (ZIP, checksum, manifest and generated notes) are passed to the final draft job, including in public repositories. Actions artifacts use repository-reader access; they are no longer described as private to maintainers. [GitHub artifact access](https://docs.github.com/en/actions/how-tos/manage-workflow-runs/download-workflow-artifacts).
+7. Only the draft job has `contents: write`. It checks out the verified commit, revalidates the downloaded package, checks the current remote tag, and calls official **`gh release create --draft --prerelease --verify-tag`** with the exact target commit and notes. It attaches **`quixdevs-stripe-rest-payments.zip`** and **`quixdevs-stripe-rest-payments.zip.sha256`**.
+8. The result is an **unpublished prerelease draft** for explicit maintainer review. There is no automatic publish command or release-readiness override. New release drafts are prereleases because the package still records development-only acceptance status.
+
+The workflow uses pinned official actions/scanner references and only the final job receives a write token. `--verify-tag` prevents implicit tag creation; `--draft` keeps the release unpublished. [Official GitHub CLI create options](https://cli.github.com/manual/gh_release_create).
+
+## Existing releases and retries
+
+The helper [create-draft-release.py](../tools/create-draft-release.py) validates local source/manifest/CRC/checksum/autoloading, exact artifact notes and remote tag identity before any release mutation. Annotated tags are peeled safely. Authentication/server failures are not treated as a missing release; only an explicit HTTP 404 permits creation.
+
+- **Published release:** stop without changing its notes or assets.
+- **Matching draft:** reuse it; identical existing assets are left untouched and only missing assets are uploaded.
+- **Conflicting source, notes or assets:** stop for manual review. Maintainer note edits are never overwritten.
+- **Tag moved or draft published during preparation:** stop remaining operations and require inspection.
+
+Existing assets are compared by provider SHA-256 digest, with byte-download comparison when a digest is unavailable. Newly uploaded assets are verified again. The helper uses no `--clobber`, asset-deletion, release-edit/publish or tag-creation command. Keep the draft unpublished until the workflow finishes: GitHub provides no atomic draft-only condition on an asset upload, so state is checked before and after each operation. Existing published assets are never overwritten.
+
+Draft creation/API handling is tested with mocked GitHub CLI responses; no actual release was created locally and remote Actions execution is not claimed as passed.
+
+## Commit, push and tag commands for the maintainer
+
+Run from the source repository after reviewing the diff. These are instructions only; this task does not execute them:
+
+```sh
+git diff --check
+git diff
+
+git add .github/workflows/release.yml tools/create-draft-release.py tests/Packaging/test_package.py tests/Packaging/test_draft_release.py README.md CHANGELOG.md docs/github-release-notes.md docs/github-publishing-checklist.md docs/release-distribution.md
+git commit -m "build: prepare verified v1.0.0 draft release"
+git push origin master
+```
+
+For a repository where `v1.0.0` does not already exist locally or remotely:
+
+```sh
+git tag -a v1.0.0 -m "QuixDevs Stripe REST Payments v1.0.0"
+git push origin refs/tags/v1.0.0
+```
+
+**In this repository, v1.0.0 already exists.** At inspection it was the annotated tag object `51d40c571b487fe63eb9dea0c283105cda17761d`, pointing to source commit `510eedba00cff244c5b6c481a19bdc65449b98ec` before these workflow changes. No published release was listed. The tag was left untouched.
+
+If the maintainer confirms this unpublished tag may be retargeted, first review its current remote value, the release inventory and the new source commit. Do not rewrite a tag used by a published release. Then, **only with that explicit maintainer decision**, replace the local annotation and push with a lease against the inspected remote tag object:
+
+```sh
+git ls-remote origin refs/tags/v1.0.0 'refs/tags/v1.0.0^{}'
+git log -1 --oneline
+
+git tag -f -a v1.0.0 -m "QuixDevs Stripe REST Payments v1.0.0"
+git push --force-with-lease=refs/tags/v1.0.0:51d40c571b487fe63eb9dea0c283105cda17761d origin refs/tags/v1.0.0
+```
+
+The lease refuses to replace a remote tag that changed since inspection. If the remote value differs, stop and review it; do not switch to an unrestricted force push. Without a reviewed tag containing the updated workflow/tools, v1.0.0 cannot build this new draft process.
+
+## Reviewing and publishing the draft
+
+1. Wait for all workflow jobs and uploads to finish. Open the draft in **GitHub Releases**, review notes and both attached assets, and verify the downloaded ZIP checksum.
+2. Review staging installation, security, source/brand/license rights and all actual acceptance limitations. A development prerelease must disclose unresolved acceptance; a stable production release requires the merchant/checkout/webhook/device and compatibility evidence in [publication readiness](publication-readiness.md).
+3. Leave **Set as a pre-release** checked for a development distribution. Change that classification only after the required stable-release review and evidence; do not infer production acceptance from green mocked-provider tests.
+4. **Publish manually only after explicit maintainer approval** using GitHub's draft editor. The workflow never publishes, edits an existing published release or creates/moves tags.
+5. A qualifying approved stable release with the exact ZIP asset makes this README link available:
 
 ```text
 https://github.com/hasancse06/QuixDevs-Stripe-Rest-Payments-Woocommerce/releases/latest/download/quixdevs-stripe-rest-payments.zip
@@ -159,10 +223,8 @@ https://github.com/hasancse06/QuixDevs-Stripe-Rest-Payments-Woocommerce/releases
 
 Drafts and prereleases do not qualify as the latest stable release. [GitHub release API semantics](https://docs.github.com/en/rest/releases/releases#get-the-latest-release).
 
-A future automated draft-preparation job may be added only after these gates are evidenced and reviewed. It must use a protected maintainer approval boundary, existing-tag verification, verified artifacts, draft-only creation and a refusal to overwrite published releases. This development workflow deliberately contains no release-write path.
-
 ## User installation
 
 Once an installation asset is approved, install WooCommerce and the exact supported official Stripe gateway, download the approved lightweight ZIP from **Releases → Assets**, then use **WordPress → Plugins → Add Plugin → Upload Plugin → Install Now → Activate**. Review **WooCommerce → Stripe REST Payments** and follow the [authentication](authentication.md), [API](rest-api.md) and [security](security.md) guides. Store owners do not run Composer.
 
-Until approval, obtain development builds privately and use isolated/staging environments only. Packaging success does not establish payment acceptance, publish authorization or production readiness.
+Before manual publication, use verified local/private review builds. Any published development prerelease must retain its acceptance limitations and staging-only guidance. Packaging success does not establish payment acceptance, publish authorization or production readiness.

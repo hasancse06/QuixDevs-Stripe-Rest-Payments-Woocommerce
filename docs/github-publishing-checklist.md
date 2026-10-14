@@ -16,7 +16,7 @@ The `.gitignore` excludes installed dependencies, caches, local credentials/sett
 
 Run `python3 tools/package.py`. It creates `dist/quixdevs-stripe-rest-payments.zip`, `dist/quixdevs-stripe-rest-payments.zip.sha256` and `dist/package-manifest.json`. Review the manifest and extracted contents. The ZIP has the correct plugin root, an internal autoloader and only allowlisted runtime files, readme and license. GitHub source archives are not the curated installation asset.
 
-Before sharing a private development build, rerun unit/integration tests, PHPCS, PHPStan and extracted-package Plugin Check on the final runtime. Install and activate on disposable WordPress. Describe it as development-only. The [manual verification workflow](../.github/workflows/release.yml) uploads ZIP artifacts only in private repositories; it creates no release. Follow [release distribution](release-distribution.md) for the existing-tag procedure and future approved-draft publication steps.
+Before preparing a draft release, rerun unit/integration tests, PHPCS, PHPStan and extracted-package Plugin Check on the final runtime. Install and activate on disposable WordPress. Describe it as development-only. The approved [draft-release workflow](../.github/workflows/release.yml) supports `v*` tag pushes and manual dispatch in the public repository. Required checks precede unpublished draft creation; no automatic publication is permitted. Existing published releases, conflicting draft assets and edited notes are refused. Follow [release distribution](release-distribution.md) for the existing-tag procedure, retry policy and manual publication steps.
 
 ## Stable payment release gates
 

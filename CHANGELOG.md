@@ -1,5 +1,13 @@
 # Changelog
 
+## Draft-release automation — 2026-10-15 (unreleased)
+
+- Added version-tag and manual triggers for the approved public-repository draft-preparation workflow.
+- Reused all required CI, Plugin Check, secret scanning, runtime packaging and checksum/autoload validation.
+- Limited release write permission to the final draft job using the official GitHub CLI; drafts receive the installation ZIP, checksum and professional notes.
+- Added safe retry guards for existing drafts, published releases, conflicting assets, edited notes, moved tags and ambiguous API failures. Published assets are never overwritten.
+- Preserved version 1.0.0, all runtime PHP, API contracts and development/acceptance evidence. No tag, commit, push or release was created during local preparation.
+
 ## Distribution preparation — 2026-10-15 (unreleased)
 
 - Reused the packager with an explicit 27-file runtime allowlist, ignored `dist/` output, SHA-256 sidecar, per-file manifest and Composer-free autoload verification.
