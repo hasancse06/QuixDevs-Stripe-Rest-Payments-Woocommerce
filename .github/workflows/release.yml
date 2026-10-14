@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
     inputs:
       tag:
-        description: Existing reviewed tag containing this workflow (must match 1.0.0)
+        description: Existing reviewed tag (must match 1.0.0; never moved)
         required: true
         type: string
         default: v1.0.0
@@ -127,10 +127,20 @@ jobs:
         run: |
           python3 tools/prepare-release.py --tag "$RELEASE_TAG"
           python3 tools/verify-package.py
+      # Run the reviewed helper from this workflow's exact commit while keeping
+      # package imports/validation bound to the clean, unchanged tagged source.
+      # This lets workflow_dispatch recover v1.0.0 without moving its tag.
+      - name: Load release helper from the workflow commit
+        env:
+          RELEASE_AUTOMATION_COMMIT: ${{ github.workflow_sha }}
+        run: |
+          [[ "$RELEASE_AUTOMATION_COMMIT" =~ ^[0-9a-f]{40}$ ]]
+          git cat-file -e "$RELEASE_AUTOMATION_COMMIT^{commit}"
+          git show "$RELEASE_AUTOMATION_COMMIT:tools/create-draft-release.py" > "$RUNNER_TEMP/create-draft-release.py"
       - name: Create or resume an unpublished draft only; never overwrite published assets
         env:
           GH_TOKEN: ${{ github.token }}
           RELEASE_TAG: ${{ needs.identity.outputs.tag }}
           RELEASE_COMMIT: ${{ needs.identity.outputs.commit }}
           RELEASE_REPOSITORY: ${{ github.repository }}
-        run: python3 tools/create-draft-release.py --repo "$RELEASE_REPOSITORY" --tag "$RELEASE_TAG" --expected-commit "$RELEASE_COMMIT"
+        run: PYTHONPATH="$GITHUB_WORKSPACE/tools" python3 "$RUNNER_TEMP/create-draft-release.py" --repo "$RELEASE_REPOSITORY" --tag "$RELEASE_TAG" --expected-commit "$RELEASE_COMMIT"
