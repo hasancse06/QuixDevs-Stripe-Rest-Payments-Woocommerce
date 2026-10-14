@@ -4,6 +4,7 @@ import argparse
 import hashlib
 import importlib.util
 import json
+import os
 from pathlib import Path
 import re
 import subprocess
@@ -118,6 +119,7 @@ def confirm_repository(repo):
     details = api(path)
     if str(details.get('full_name', '')).lower() != repo.lower():
         raise request_error('GET', path, 200, 'repository_identity_mismatch')
+    return details
 
 
 def release_id(details, path):
@@ -127,16 +129,17 @@ def release_id(details, path):
     return identifier
 
 
-def find_release(repo, tag):
-    # The by-tag endpoint finds published releases only. A 404 must never be
-    # used as proof that no draft exists. The authenticated list includes drafts
-    # for the write-capable workflow token; scan every page before creating one.
-    path = f'repos/{repo}/releases/tags/{tag}'
-    published = api(path, allow_missing=True)
-    if published is not None:
-        release_id(published, path)
-        return published
-    matches = []
+def validate_release_arguments(repo, tag):
+    if not re.fullmatch(r'[A-Za-z0-9][A-Za-z0-9_.-]*/[A-Za-z0-9][A-Za-z0-9_.-]*', repo):
+        raise ReleaseError('Supply the confirmed OWNER/REPOSITORY.')
+    if tag != 'v' + VERSION:
+        raise ReleaseError('Use the unchanged v1.0.0 release tag.')
+
+
+def matching_inventory(repo, tag):
+    """Count real IDs, not rows; independently confirm each candidate by ID."""
+    occurrences = 0
+    candidates = {}
     for page in range(1, 101):
         path = f'repos/{repo}/releases?per_page=100&page={page}'
         records = api(path, response_type=list)
@@ -144,13 +147,106 @@ def find_release(repo, tag):
             if not isinstance(record, dict):
                 raise request_error('GET', path, 200, 'malformed_release_inventory')
             if record.get('tag_name') == tag:
-                release_id(record, path)
-                matches.append(record)
+                identifier = release_id(record, path)
+                occurrences += 1
+                candidates[identifier] = record
         if len(records) < 100:
-            if len(matches) > 1:
-                raise ReleaseError('Multiple releases/drafts share this tag; review them manually.')
-            return matches[0] if matches else None
-    raise ReleaseError('Release inventory pagination limit reached; no absence is assumed.')
+            break
+    else:
+        raise ReleaseError('Release inventory pagination limit reached; no absence is assumed.')
+    verified = []
+    for identifier in sorted(candidates):
+        record = get_release(repo, identifier)
+        if record.get('tag_name') != tag:
+            raise ReleaseError('Release tag changed during inventory verification; rerun diagnostics before any mutation.')
+        verified.append(record)
+    return {'pages_scanned': page, 'matching_occurrences': occurrences,
+            'repeated_occurrences': occurrences - len(candidates), 'records': verified}
+
+
+def safe_metadata_text(value):
+    if not isinstance(value, str):
+        return None
+    # Known authentication values must never reach logs, even if echoed in a
+    # release name. The API body/author/headers are never part of the report.
+    for variable in ('GH_TOKEN', 'GITHUB_TOKEN'):
+        secret = os.environ.get(variable)
+        if secret:
+            value = value.replace(secret, '[redacted]')
+    return re.sub(r'(?:gh[pousr]_[A-Za-z0-9]{20,}|github_pat_[A-Za-z0-9_]{20,})', '[redacted]', value)
+
+
+def diagnostic_report(repo, tag, inventory):
+    records = []
+    for record in inventory['records']:
+        identifier = release_id(record, f'repos/{repo}/releases')
+        if type(record.get('draft')) is not bool or type(record.get('prerelease')) is not bool:
+            raise ReleaseError('Release status metadata is unavailable; no draft classification is assumed.')
+        assets = record.get('assets')
+        if not isinstance(assets, list) or any(not isinstance(a, dict) or not isinstance(a.get('name'), str) for a in assets):
+            raise ReleaseError('Release asset inventory is unavailable for diagnostics.')
+        url = safe_metadata_text(record.get('html_url', ''))
+        # Report only the actual same-repository GitHub URL. Never invent an
+        # ID-based editor URL, follow links, or emit query/credential values.
+        if not isinstance(url, str) or not re.fullmatch(r'https://github\.com/' + re.escape(repo) + r'/releases/[A-Za-z0-9_./%~-]+', url):
+            url = None
+        records.append({'id': identifier, 'name': safe_metadata_text(record.get('name')),
+                        'tag_name': tag, 'draft': record['draft'], 'prerelease': record['prerelease'],
+                        'html_url': url, 'created_at': safe_metadata_text(record.get('created_at')),
+                        'asset_names': [safe_metadata_text(a['name']) for a in assets]})
+    count = len(records)
+    return {'repository': repo, 'tag': tag, 'unique_release_count': count,
+            'matching_occurrences': inventory['matching_occurrences'],
+            'repeated_occurrences': inventory['repeated_occurrences'],
+            'pages_scanned': inventory['pages_scanned'], 'verified_by_id': True,
+            'classification': 'multiple_distinct_records' if count > 1 else 'single_record' if count else 'no_matching_records',
+            'releases': records}
+
+
+def emit_diagnostics(report, summary_file=None):
+    # JSON escapes embedded newlines/control characters, so release names cannot
+    # become GitHub workflow commands. Only explicitly selected metadata is logged.
+    rendered = json.dumps(report, indent=2, ensure_ascii=True)
+    print(rendered)
+    if summary_file is not None:
+        with Path(summary_file).open('a') as summary:
+            summary.write('\n## Release inventory diagnostics\n\n```json\n' + rendered + '\n```\n')
+            for record in report['releases']:
+                if record['html_url']:
+                    summary.write(f"\n- Release {record['id']}: <{record['html_url']}>\n")
+
+
+def diagnose(repo, tag, summary_file=None):
+    """Read-only authenticated inventory; no tag/package/release mutations."""
+    validate_release_arguments(repo, tag)
+    # A successful public GET is not evidence that the caller can see drafts.
+    # Check authentication privately; never print gh auth stdout/stderr.
+    gh(['auth', 'status', '--hostname', 'github.com'])
+    repository = confirm_repository(repo)
+    permissions = repository.get('permissions', {})
+    if isinstance(permissions, dict) and permissions.get('push') is False:
+        raise ReleaseError('Authenticated caller lacks push access; draft inventory visibility cannot be verified.')
+    report = diagnostic_report(repo, tag, matching_inventory(repo, tag))
+    emit_diagnostics(report, summary_file)
+    return report
+
+
+def find_release(repo, tag):
+    # By-tag absence never proves draft absence. Match exact tag, deduplicate
+    # stable numeric IDs across pages, and confirm each candidate independently.
+    path = f'repos/{repo}/releases/tags/{tag}'
+    published = api(path, allow_missing=True)
+    if published is not None:
+        release_id(published, path)
+        return published
+    inventory = matching_inventory(repo, tag)
+    records = inventory['records']
+    if len(records) > 1:
+        report = diagnostic_report(repo, tag, inventory)
+        emit_diagnostics(report)
+        identifiers = ', '.join(str(record['id']) for record in records)
+        raise ReleaseError(f'Multiple distinct releases/drafts share this tag (IDs: {identifiers}); review reported URLs manually.')
+    return records[0] if records else None
 
 
 def get_release(repo, identifier):
@@ -216,10 +312,9 @@ def asset_matches(repo, tag, path, asset):
 
 def create_draft(repo, tag, directory, expected_commit):
     directory = Path(directory).resolve()
-    if not re.fullmatch(r'[A-Za-z0-9][A-Za-z0-9_.-]*/[A-Za-z0-9][A-Za-z0-9_.-]*', repo):
-        raise ReleaseError('Supply the confirmed OWNER/REPOSITORY.')
-    if tag != 'v' + VERSION or not re.fullmatch(r'[0-9a-f]{40}', expected_commit):
-        raise ReleaseError('Use v1.0.0 and the full verified source commit SHA.')
+    validate_release_arguments(repo, tag)
+    if not re.fullmatch(r'[0-9a-f]{40}', expected_commit):
+        raise ReleaseError('Use the full verified source commit SHA.')
     local = subprocess.check_output(['git', 'rev-parse', 'HEAD'], cwd=ROOT, text=True).strip()
     if local != expected_commit:
         raise ReleaseError('Checked-out source does not match the verified commit.')
@@ -287,12 +382,19 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--repo', required=True)
     parser.add_argument('--tag', required=True)
-    parser.add_argument('--expected-commit', required=True)
+    parser.add_argument('--expected-commit', help='Required for creation; omitted for read-only diagnostics')
     parser.add_argument('--artifact-dir', type=Path, default=ROOT / 'dist')
-    parser.add_argument('--prepare-notes', action='store_true', help='Write local notes only; never call GitHub')
+    mode = parser.add_mutually_exclusive_group()
+    mode.add_argument('--prepare-notes', action='store_true', help='Write local notes only; never call GitHub')
+    mode.add_argument('--diagnose', action='store_true', help='Read authenticated release inventory only; never mutate GitHub')
+    parser.add_argument('--summary-file', type=Path, help='Append safe diagnostic metadata to GITHUB_STEP_SUMMARY')
     args = parser.parse_args()
+    if not args.diagnose and not args.prepare_notes and not args.expected_commit:
+        parser.error('--expected-commit is required for draft creation')
     try:
-        if args.prepare_notes:
+        if args.diagnose:
+            diagnose(args.repo, args.tag, args.summary_file)
+        elif args.prepare_notes:
             destination = args.artifact_dir / 'release-notes.md'
             destination.write_text(release_notes(args.artifact_dir))
             print(f'Prepared {destination.name}; no GitHub request made.')

@@ -37,7 +37,7 @@ class FakeGitHub:
         self.publish_after_upload = False
 
     def record(self):
-        return {'id': 123, 'draft': True, 'prerelease': True, 'tag_name': TAG, 'target_commitish': COMMIT,
+        return {'id': 123, 'name': 'QuixDevs ' + TAG, 'created_at': '2026-10-15T00:00:00Z', 'draft': True, 'prerelease': True, 'tag_name': TAG, 'target_commitish': COMMIT,
                 'body': draft.release_notes(self.directory), 'assets': [],
                 'html_url': f'https://github.com/{REPO}/releases/tag/{TAG}'}
 
@@ -271,15 +271,20 @@ class DraftReleaseTests(unittest.TestCase):
     def test_draft_on_later_inventory_page_is_found(self):
         record = FakeGitHub(self.directory, existing=True).details
         first = [{'id': n + 1, 'tag_name': 'another-tag'} for n in range(100)]
-        with patch.object(draft, 'api', side_effect=[None, first, [record]]) as client:
+        with patch.object(draft, 'api', side_effect=[None, first, [record], record]) as client:
             self.assertEqual(draft.find_release(REPO, TAG)['id'], 123)
-        self.assertIn('page=2', client.call_args_list[-1].args[0])
+        self.assertIn('page=2', client.call_args_list[-2].args[0])
 
-    def test_duplicate_or_invalid_release_identity_is_rejected(self):
+    def test_distinct_duplicate_or_invalid_release_identity_is_rejected(self):
         record = FakeGitHub(self.directory, existing=True).details
-        with patch.object(draft, 'api', side_effect=[None, [record, record]]):
-            with self.assertRaisesRegex(draft.ReleaseError, 'Multiple'):
+        other = dict(record, id=124, html_url=f'https://github.com/{REPO}/releases/tag/untagged-other')
+        output = io.StringIO()
+        with patch.object(draft, 'api', side_effect=[None, [record, other], record, other]), contextlib.redirect_stdout(output):
+            with self.assertRaisesRegex(draft.ReleaseError, 'Multiple distinct.*123, 124'):
                 draft.find_release(REPO, TAG)
+        report = json.loads(output.getvalue())
+        self.assertEqual(report['unique_release_count'], 2)
+        self.assertEqual([r['id'] for r in report['releases']], [123, 124])
         for identifier in [None, True, 0, '123']:
             with self.subTest(identifier=identifier), patch.object(draft, 'api', return_value={'id': identifier}):
                 with self.assertRaisesRegex(draft.ReleaseError, 'invalid_release_identity'):
@@ -378,6 +383,144 @@ class DraftReleaseTests(unittest.TestCase):
         self.assertIn('git show "$RELEASE_AUTOMATION_COMMIT:tools/create-draft-release.py"', job)
         self.assertIn('PYTHONPATH="$GITHUB_WORKSPACE/tools"', job)
         self.assertNotIn('secrets.PAT', workflow)
+
+    def test_repeated_same_id_is_not_a_second_release(self):
+        record = FakeGitHub(self.directory, existing=True).details
+        with patch.object(draft, 'api', side_effect=[None, [record, record], record]):
+            self.assertEqual(draft.find_release(REPO, TAG)['id'], 123)
+
+    def test_repeated_ids_across_pages_are_confirmed_only_once(self):
+        record = FakeGitHub(self.directory, existing=True).details
+        updated = dict(record, name='Latest name')
+        first = [record] + [{'tag_name': 'other'}] * 99
+        with patch.object(draft, 'api', side_effect=[first, [record], updated]) as client:
+            inventory = draft.matching_inventory(REPO, TAG)
+        self.assertEqual(inventory['matching_occurrences'], 2)
+        self.assertEqual(inventory['repeated_occurrences'], 1)
+        self.assertEqual(inventory['records'], [updated])
+        self.assertEqual(client.call_args_list[-1].args[0], f'repos/{REPO}/releases/123')
+
+    def test_true_duplicate_ids_stop_creation_without_mutations(self):
+        fake = FakeGitHub(self.directory, existing=True)
+        record = fake.details
+        other = dict(record, id=124)
+        original = fake.api
+        def inventory_api(path, **kwargs):
+            if '/releases?' in path:
+                return [record, other]
+            if path.endswith('/releases/124'):
+                return other
+            return original(path, **kwargs)
+        fake.api = inventory_api
+        with self.assertRaisesRegex(draft.ReleaseError, 'Multiple distinct'):
+            self.run_draft(fake)
+        self.assertEqual(fake.commands, [])
+
+    def test_inventory_tag_change_and_disappearing_id_fail_closed(self):
+        record = FakeGitHub(self.directory, existing=True).details
+        with patch.object(draft, 'api', side_effect=[[record], dict(record, tag_name='v2.0.0')]):
+            with self.assertRaisesRegex(draft.ReleaseError, 'tag changed during inventory'):
+                draft.matching_inventory(REPO, TAG)
+        with patch.object(draft, 'api', side_effect=[[record], draft.request_error('GET', f'repos/{REPO}/releases/123', 404)]):
+            with self.assertRaisesRegex(draft.ReleaseError, 'release_missing_or_inaccessible'):
+                draft.matching_inventory(REPO, TAG)
+
+    def test_diagnostics_empty_single_and_multiple_are_read_only(self):
+        record = FakeGitHub(self.directory, existing=True).details
+        other = dict(record, id=124, draft=False, prerelease=False,
+                     html_url=f'https://github.com/{REPO}/releases/tag/untagged-second')
+        record['assets'] = [{'name': f'{package.SLUG}.zip'}]
+        for candidates in [[], [record], [record, other]]:
+            with self.subTest(count=len(candidates)), patch.object(draft, 'gh') as cli, \
+                 patch.object(draft, 'api', side_effect=[{'full_name': REPO, 'permissions': {'push': True}}, candidates] + candidates), \
+                 patch.object(draft, 'create_draft') as create, patch.object(draft, 'remote_commit') as tag_mutator, \
+                 patch.object(draft._VERIFY, 'verify') as package_check, contextlib.redirect_stdout(io.StringIO()) as output:
+                report = draft.diagnose(REPO, TAG)
+            self.assertEqual(report['unique_release_count'], len(candidates))
+            self.assertEqual(json.loads(output.getvalue()), report)
+            self.assertEqual([r['id'] for r in report['releases']], [r['id'] for r in candidates])
+            cli.assert_called_once_with(['auth', 'status', '--hostname', 'github.com'])
+            create.assert_not_called()
+            tag_mutator.assert_not_called()
+            package_check.assert_not_called()
+            for actual, source in zip(report['releases'], candidates):
+                self.assertEqual(set(actual), {'id', 'name', 'tag_name', 'draft', 'prerelease', 'html_url', 'created_at', 'asset_names'})
+                self.assertEqual(actual['html_url'], source['html_url'])
+                self.assertEqual(actual['asset_names'], [a['name'] for a in source['assets']])
+
+    def test_diagnostics_validate_authentication_and_access(self):
+        with patch.object(draft, 'gh', side_effect=draft.ReleaseError('authentication unavailable')), patch.object(draft, 'api') as client:
+            with self.assertRaisesRegex(draft.ReleaseError, 'authentication unavailable'):
+                draft.diagnose(REPO, TAG)
+            client.assert_not_called()
+        with patch.object(draft, 'gh'), patch.object(draft, 'api', return_value={'full_name': REPO, 'permissions': {'push': False}}) as client:
+            with self.assertRaisesRegex(draft.ReleaseError, 'draft inventory visibility'):
+                draft.diagnose(REPO, TAG)
+            self.assertEqual(client.call_count, 1)
+        with patch.object(draft, 'gh') as client:
+            for repo, tag in [('bad repo', TAG), (REPO, 'v1.0.1')]:
+                with self.subTest(repo=repo, tag=tag), self.assertRaises(draft.ReleaseError):
+                    draft.diagnose(repo, tag)
+            client.assert_not_called()
+
+    def test_diagnostic_output_redacts_tokens_and_omits_unrequested_fields(self):
+        import os
+        record = FakeGitHub(self.directory, existing=True).details
+        secret = 'ghp_' + 'X' * 36
+        workflow_secret = 'nonstandard-workflow-authentication-value'
+        record.update(name='Name ' + secret + '\n::warning::injected',
+                      body='SECRET_BODY', author={'token': 'SECRET_AUTHOR'},
+                      assets=[{'name': secret + '.zip', 'url': 'SECRET_ASSET_URL'}, {'name': workflow_secret + '.sha256'}])
+        inventory = {'pages_scanned': 1, 'matching_occurrences': 1, 'repeated_occurrences': 0, 'records': [record]}
+        with patch.dict(os.environ, {'GH_TOKEN': secret, 'GITHUB_TOKEN': workflow_secret}), tempfile.TemporaryDirectory() as temporary:
+            summary = Path(temporary) / 'summary.md'
+            with contextlib.redirect_stdout(io.StringIO()) as output:
+                report = draft.diagnostic_report(REPO, TAG, inventory)
+                draft.emit_diagnostics(report, summary)
+            for text in [output.getvalue(), summary.read_text()]:
+                self.assertNotIn(secret, text)
+                self.assertNotIn(workflow_secret, text)
+                self.assertNotIn('SECRET_', text)
+                self.assertNotIn('\n::warning::', text)
+                self.assertIn('[redacted]', text)
+            self.assertIn(f"<{record['html_url']}>", summary.read_text())
+
+    def test_diagnostics_do_not_emit_untrusted_urls_or_assume_status(self):
+        record = FakeGitHub(self.directory, existing=True).details
+        for url in ['https://evil.example/SECRET', f'https://github.com/{REPO}/releases/tag/v1.0.0?token=SECRET', None]:
+            inventory = {'pages_scanned': 1, 'matching_occurrences': 1, 'repeated_occurrences': 0, 'records': [dict(record, html_url=url)]}
+            self.assertIsNone(draft.diagnostic_report(REPO, TAG, inventory)['releases'][0]['html_url'])
+        for malformed in [dict(record, draft=None), dict(record, assets=None)]:
+            inventory = {'pages_scanned': 1, 'matching_occurrences': 1, 'repeated_occurrences': 0, 'records': [malformed]}
+            with self.assertRaises(draft.ReleaseError):
+                draft.diagnostic_report(REPO, TAG, inventory)
+
+    def test_diagnostics_cli_requires_no_commit_and_makes_no_mutation(self):
+        # A fake gh on PATH models authenticated GETs, rejecting all other API
+        # methods/CLI commands. No network or real GitHub credential is used.
+        import os
+        with tempfile.TemporaryDirectory(prefix='quixdevs-diagnostic-cli-') as temporary:
+            cli = Path(temporary) / 'gh'
+            cli.write_text("#!/usr/bin/env python3\nimport sys, json\na=sys.argv[1:]\n"
+                "if a[:2]==['auth','status']: sys.exit(0)\n"
+                "if a[:4]!=['api','--include','--method','GET']: sys.exit(99)\n"
+                "print('HTTP/2.0 200 OK\\n\\n'+json.dumps({'full_name':" + repr(REPO) + "} if a[-1]==" + repr('repos/' + REPO) + " else []))\n")
+            cli.chmod(0o700)
+            environment = dict(os.environ, PATH=temporary + os.pathsep + os.environ['PATH'], PYTHONDONTWRITEBYTECODE='1')
+            result = subprocess.run([sys.executable, str(ROOT / 'tools/create-draft-release.py'),
+                '--diagnose', '--repo', REPO, '--tag', TAG], env=environment, capture_output=True, text=True)
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertEqual(json.loads(result.stdout)['unique_release_count'], 0)
+
+    def test_workflow_diagnostic_mode_guards_creation_and_uses_summary(self):
+        body = (ROOT / '.github/workflows/release.yml').read_text()
+        self.assertIn('diagnostics_only:', body)
+        self.assertIn('if: ${{ !inputs.diagnostics_only }}', body)
+        self.assertIn('--diagnose --repo', body)
+        self.assertIn('--summary-file "$GITHUB_STEP_SUMMARY"', body)
+        diagnostic = body.split('      - name: Diagnose matching releases')[1].split('      - name: Create or resume')[0]
+        self.assertIn('GH_TOKEN: ${{ github.token }}', diagnostic)
+        self.assertNotIn('--expected-commit', diagnostic)
 
 
 if __name__ == '__main__':
