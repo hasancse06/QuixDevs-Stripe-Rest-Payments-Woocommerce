@@ -4,39 +4,40 @@
 
 **REST API Payment Integration for WooCommerce Stripe**
 
-This plugin extends the official WooCommerce Stripe Payment Gateway to support authorized payment workflows for external web and mobile applications. Prepare an existing customer order through a secure WooCommerce Stripe REST API, open the store's native payment page, and read server-verified payment status.
-
-**Development build — target version 1.0.0.** Merchant Stripe test-mode acceptance and publication checks remain outstanding. See [publication readiness](docs/publication-readiness.md).
-
 Connect Apps. Process Payments.
 
-**[Installation](#installation)** · [Quick start](#quick-start) · [REST API](#rest-api) · [Developer documentation](#developer-documentation)
+This plugin extends the official WooCommerce Stripe Payment Gateway to support authorized payment workflows for external web and mobile applications. Prepare an existing customer order through a secure WooCommerce Stripe REST API, open the store's native payment page, and read server-verified payment status.
 
 ## 📦 Download & Install
 
-**Development-only — no approved public installation ZIP is available yet.** Merchant Stripe test-mode acceptance and publisher-rights checks remain outstanding. Current verified builds are for isolated/staging review; see [release distribution](docs/release-distribution.md) and [publication readiness](docs/publication-readiness.md).
+**[⬇️ Download Latest Stripe REST Payments Plugin](https://github.com/hasancse06/QuixDevs-Stripe-Rest-Payments-Woocommerce/releases/latest/download/quixdevs-stripe-rest-payments.zip)**
 
-The eventual official installation asset is **`quixdevs-stripe-rest-payments.zip`**, distributed separately under **GitHub Releases → Assets** after approval. **Code → Download ZIP** downloads the full development repository, including tests and tooling; it is not the lightweight WordPress installation package.
+Download the lightweight WordPress installation package, **`quixdevs-stripe-rest-payments.zip`**, from **[GitHub Releases → Assets](https://github.com/hasancse06/QuixDevs-Stripe-Rest-Payments-Woocommerce/releases)**.
 
-When an installation asset has been approved:
+**Development build — target version 1.0.0. No public installation ZIP is available yet.** The direct latest-download link becomes available only after a qualifying published release contains the correctly named ZIP asset; a draft or prerelease does not qualify. Merchant Stripe test-mode acceptance and publisher-rights checks remain outstanding. Use current development builds only for isolated/staging review. [Publication readiness](docs/publication-readiness.md).
 
-1. Install **WooCommerce**.
-2. Install and configure the **official WooCommerce Stripe Payment Gateway**, currently **exactly 11.0.1**, with cards enabled.
-3. Download the approved **`quixdevs-stripe-rest-payments.zip`** installation asset.
-4. Open **WordPress → Plugins → Add Plugin**.
-5. Select **Upload Plugin**.
-6. Choose the ZIP, install and activate it.
-7. Review **WooCommerce → Stripe REST Payments** and resolve diagnostics.
+### Installation
 
-No Composer installation is required on the customer site. During development, maintainers build locally with `python3 tools/package.py`; the ZIP and checksum are written to ignored `dist/`. The manual release workflow creates no GitHub Release. ZIP artifacts are uploaded only in a **private repository**; the current public repository performs verification without uploading the development ZIP.
+Once an approved installation asset is available:
 
-The configured remote was verified as `hasancse06/QuixDevs-Stripe-Rest-Payments-Woocommerce`. This permanent latest-download URL is prepared for a future approved stable release and intentionally shown as plain text, without an active download button:
+1. Install and activate **WooCommerce**.
+2. Install and activate the **official WooCommerce Stripe Payment Gateway**, currently **exactly 11.0.1**.
+3. Configure the Stripe gateway with valid merchant settings and enable its card payment method. Review the [requirements](#requirements), including HTTPS; use authorized test-mode settings for staging acceptance.
+4. Download **`quixdevs-stripe-rest-payments.zip`** from the approved release’s **Assets**.
+5. Open **WordPress Admin → Plugins → Add Plugin**.
+6. Select **Upload Plugin**.
+7. Choose the downloaded ZIP.
+8. Click **Install Now**.
+9. Activate **QuixDevs Stripe REST Payments**.
+10. Open **WooCommerce → Stripe REST Payments** to review dependency status and API information.
 
-```text
-https://github.com/hasancse06/QuixDevs-Stripe-Rest-Payments-Woocommerce/releases/latest/download/quixdevs-stripe-rest-payments.zip
-```
+**No Composer installation or command-line tools are required on the store server.**
 
-A draft or prerelease does not establish an approved latest stable download. Promote the URL only after the release and its exact asset filename are approved and published manually.
+> **Important:** Use `quixdevs-stripe-rest-payments.zip` from **GitHub Releases → Assets**. **Code → Download ZIP** and the automatically generated **Source code ZIP** contain the complete development repository, including tests, documentation and tooling. They are not the optimized WordPress installation package.
+
+[Browse all releases](https://github.com/hasancse06/QuixDevs-Stripe-Rest-Payments-Woocommerce/releases) · [Build and release documentation](docs/release-distribution.md)
+
+**[Installation](#installation)** · [Quick start](#quick-start) · [REST API](#rest-api) · [Developer documentation](#developer-documentation)
 
 ## Overview
 
@@ -44,8 +45,9 @@ A WooCommerce Stripe API addon for existing-order payments. QuixDevs adds two au
 
 ## Key Features
 
-- WordPress customer authentication and explicitly scoped server integrations.
-- Persistent preparation mutex and per-order idempotency records.
+- Authenticated payment preparation for existing WooCommerce customer orders.
+- Order ownership authorization and explicitly scoped server integrations.
+- Request idempotency and duplicate preparation protection through persistent per-order locks.
 - Verified Stripe payment state, amount, currency, mode and transaction matching.
 - Native order-pay browser handoff for WooCommerce mobile payment integration.
 - WooCommerce CRUD with legacy storage and HPOS integration coverage.
@@ -86,13 +88,11 @@ All four views are visible below. They show the actual addon on a disposable sto
 
 The exact Stripe pin protects the inspected internal read interfaces. Declared minimums are guards; other combinations and future Stripe versions are not claimed as tested.
 
-## Installation
+## Maintainer Build
 
-**Use a staging store while merchant acceptance remains outstanding. No Composer or command-line tools are required on the store.**
+For current staging review, maintainers can build the development ZIP locally. The manual release workflow creates no GitHub Release and uploads ZIP artifacts only in a private repository; the current public repository verifies without uploading the development ZIP. [Complete distribution procedure](docs/release-distribution.md).
 
-Follow the **Download & Install** steps above once an approved asset exists. For current staging review, obtain the verified development ZIP privately from a maintainer or build it locally.
-
-Maintainer build and verification:
+Build and verify from the source repository:
 
 ```sh
 python3 tools/package.py
@@ -166,9 +166,9 @@ Missing routes indicate a dependency, HTTPS or merchant-configuration issue. An 
 
 ## Verification
 
-Recorded local checks passed: **51 unit tests / 93 assertions**, **18 real WordPress/WooCommerce integration tests / 81 assertions**, legacy and HPOS storage, repeated four-process lock contention, PHPCS, PHPStan level 5, PHP syntax, extracted-package Plugin Check, and Composer-free ZIP installation and lifecycle retention.
+Recorded local checks passed: **51 unit tests / 93 assertions**, **18 real WordPress/WooCommerce integration tests / 81 assertions**, **15 packaging tests**, legacy and HPOS storage, repeated four-process lock contention, PHPCS, PHPStan level 5, PHP syntax, extracted-package Plugin Check, and Composer-free ZIP installation and lifecycle retention.
 
-Provider HTTP was mocked or blocked throughout. Real Stripe success, decline, 3DS, capture, native browser checkout, webhook recovery, mobile-device return behavior and remote CI execution remain unverified. [Test procedure and environment](docs/testing.md) · [Acceptance status](docs/publication-readiness.md).
+Provider HTTP was mocked or blocked throughout. Real Stripe success, decline, 3DS, capture, native browser checkout, webhook recovery, mobile-device return behavior and remote CI execution remain unverified. [Test procedure and environment](docs/testing.md) · [Distribution verification](docs/release-distribution.md) · [Acceptance status](docs/publication-readiness.md).
 
 ## Developer Documentation
 
@@ -205,7 +205,7 @@ See [CONTRIBUTING.md](CONTRIBUTING.md). The source repository includes developme
 
 [MIT](LICENSE) for the new implementation, as requested. The original file says only “MIT License”; it contains no complete grant or ownership notice. Rights/ownership attestation remains a publication prerequisite. No original EventPro code is bundled. See [licensing review](docs/licensing.md).
 
-## 👨‍💻 Developer & Creator
+## 👨‍💻 Developer, Creator & Maintainer
 
 **[Md Abu Hasan (M A Hasan)](https://hasan.online/)**
 
@@ -220,7 +220,7 @@ Full-Stack Software Engineer with **10+ years of experience** building web appli
 
 ## Maintained by
 
-**QuixDevs**
+**[QuixDevs](https://quixdevs.com/)**
 
 QuixDevs Stripe REST Payments is developed and maintained under the QuixDevs brand.
 
