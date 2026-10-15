@@ -227,3 +227,13 @@ QuixDevs Stripe REST Payments is developed and maintained under the QuixDevs bra
 Copyright © 2026 QuixDevs.
 
 Independent addon; no official Stripe or WooCommerce endorsement is implied.
+
+
+## ⭐ Support This Project
+
+If you find this useful:
+- ⭐ Star the repository on GitHub
+- 🔗 Share it with fellow Ionic, WordPress, WooCommerce, or mobile app developers
+- 💡 Contribute with feedback or pull requests
+
+> Together, we make WordPress more mobile-friendly and developer-first 🚀
